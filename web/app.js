@@ -9,6 +9,50 @@
   const format = new Intl.NumberFormat('zh-CN');
   let currentResult;
   let revision = 0;
+  const steppers = [];
+
+  for (const input of form.querySelectorAll('input[type="number"]')) {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'stepper';
+    input.readOnly = true;
+    input.inputMode = 'none';
+    input.tabIndex = -1;
+    const buttons = [-1, 1].map(direction => {
+      const button = document.createElement('button');
+      button.type = 'button';
+      button.textContent = direction < 0 ? '−' : '+';
+      button.addEventListener('pointerdown', event => {
+        if (button.disabled || event.button !== 0) return;
+        button.classList.add('is-pressed');
+        button.setPointerCapture(event.pointerId);
+      });
+      for (const event of ['pointerup', 'pointercancel', 'lostpointercapture', 'blur']) {
+        button.addEventListener(event, () => button.classList.remove('is-pressed'));
+      }
+      button.addEventListener('click', () => {
+        const min = Number(input.min || 0);
+        const max = Number(input.max || Number.MAX_SAFE_INTEGER);
+        const value = Math.min(max, Math.max(min, Number(input.value) + direction));
+        if (value === Number(input.value)) return;
+        input.value = value;
+        input.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      return button;
+    });
+    input.before(wrapper);
+    wrapper.append(buttons[0], input, buttons[1]);
+    steppers.push({ input, buttons });
+  }
+
+  function updateSteppers() {
+    for (const { input, buttons } of steppers) {
+      const title = document.querySelector(`label[for="${input.id}"]`).textContent;
+      buttons[0].setAttribute('aria-label', '减少' + title);
+      buttons[1].setAttribute('aria-label', '增加' + title);
+      buttons[0].disabled = Number(input.value) <= Number(input.min || 0);
+      buttons[1].disabled = Number(input.value) >= Number(input.max || Number.MAX_SAFE_INTEGER);
+    }
+  }
 
   function inputConfig() {
     const data = new FormData(form);
@@ -46,6 +90,11 @@
   function updateSharedLimits() {
     form.elements.sameFront.max = form.elements.front.value;
     form.elements.sameBack.max = form.elements.back.value;
+    for (const name of ['sameFront', 'sameBack']) {
+      const input = form.elements[name];
+      input.value = Math.min(Number(input.value), Number(input.max));
+    }
+    updateSteppers();
   }
 
   function stat(label, value, unit) {

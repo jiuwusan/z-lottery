@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="theme-color" content="#173f35">
+  <meta name="description" content="大乐透与双色球随机选号，支持复式、共享号码、倍数和连续期数。">
+  <title>z-lottery · 随机选号</title>
+  <link rel="stylesheet" href="./styles.css">
+  <script defer src="./lottery-core.js"></script>
+  <script defer src="./app.js"></script>
+</head>
+<body>
+  <div class="shell">
+    <header class="topbar"><a class="brand" href="./"><span class="brand-icon" aria-hidden="true">z.</span> z-lottery</a><span class="top-note"><i></i> 每一次，都是新的可能</span></header>
+    <main>
+      <section class="intro"><div class="eyebrow">RANDOM NUMBER STUDIO</div><h1>把选择，交给随机。</h1><p>设定你的投注方式，生成一组属于今天的号码。</p></section>
+      <div class="workspace">
+        <section class="panel settings" aria-labelledby="settings-title">
+          <div class="section-heading"><h2 id="settings-title">选号设置</h2><span class="step">01 / CONFIGURE</span></div>
+          <form id="settings-form" novalidate>
+            <fieldset class="game-switch"><legend class="sr-only">彩票类型</legend><label><input type="radio" name="game" value="dlt" checked><span>超级大乐透<small>35 选 5 + 12 选 2</small></span></label><label><input type="radio" name="game" value="ssq"><span>双色球<small>33 选 6 + 16 选 1</small></span></label></fieldset>
+            <div class="field-grid">
+              <label><span id="front-label">前区数量</span><input name="front" type="number" min="5" max="35" step="1" value="6" required><small id="front-hint">选择 5～35 个号码</small></label>
+              <label><span id="back-label">后区数量</span><input name="back" type="number" min="2" max="12" step="1" value="3" required><small id="back-hint">选择 2～12 个号码</small></label>
+              <label><span>生成组数</span><input name="count" type="number" min="1" max="1000" step="1" value="4" required><small>每次最多 1,000 组</small></label>
+              <label><span>投注倍数</span><input name="multiple" type="number" min="1" step="1" value="1" required><small>每注的投注倍数</small></label>
+              <label class="wide"><span>连续期数</span><input name="periods" type="number" min="1" step="1" value="1" required><small>同一批号码连续使用，不重新选号</small></label>
+            </div>
+            <div class="shared-section"><div class="subheading">共享号码 <span>可选</span></div><p>让每组保留相同的号码，其余号码随机补齐。</p><div class="field-grid"><label><span id="same-front-label">共享前区</span><input name="sameFront" type="number" min="0" max="6" step="1" value="0" required></label><label><span id="same-back-label">共享后区</span><input name="sameBack" type="number" min="0" max="3" step="1" value="0" required></label></div></div>
+            <label class="append-option" id="append-option"><input name="append" type="checkbox"><span>大乐透追加投注<small>每注增加 1 元</small></span><span class="price-tag">+ ¥1</span></label>
+            <div id="form-error" class="error" role="alert" hidden></div>
+            <button class="primary-button" type="submit"><span aria-hidden="true">↻</span> 生成号码 <span class="button-arrow" aria-hidden="true">→</span></button>
+            <button class="reset-button" type="button" id="reset-button">恢复默认设置</button>
+          </form>
+        </section>
+        <section class="results" aria-labelledby="results-title">
+          <div class="section-heading result-heading"><div><span class="eyebrow">YOUR LUCKY NUMBERS</span><h2 id="results-title">这一组，刚刚好。</h2></div><button id="copy-button" class="outline-button" type="button">复制结果</button></div>
+          <div class="result-meta"><span id="result-description"></span><span class="fresh-label"><i></i> 随机生成</span></div>
+          <div id="tickets" class="tickets"></div>
+          <div class="panel summary" id="summary"></div>
+          <p class="result-note">共享数量为最低交集，其他号码也可能偶然相同。各组独立计费。</p>
+          <div id="status" class="status" role="status" aria-live="polite"></div>
+        </section>
+      </div>
+    </main>
+    <footer><span>z-lottery <span class="footer-divider">/</span> 留一点期待给生活</span><span>仅供随机选号与金额计算，不提供预测或购买服务。</span></footer>
+  </div>
+  <noscript><p class="error">请启用 JavaScript 以使用号码生成页面。</p></noscript>
+</body>
+</html>

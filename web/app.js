@@ -53,6 +53,8 @@
   }
 
   function render(result) {
+    document.querySelector('#result-meta').hidden = false;
+    summaryElement.hidden = false;
     const { config, game } = result;
     const isMultiple = config.front > game.frontPick || config.back > game.backPick;
     const fragment = document.createDocumentFragment();
@@ -114,7 +116,9 @@
   document.querySelector('#reset-button').addEventListener('click', () => {
     form.reset();
     updateGame();
-    generate();
+    showError('');
+    revision++;
+    statusElement.textContent = '已恢复默认设置，点击「生成号码」生成结果。';
   });
 
   copyButton.addEventListener('click', async () => {
@@ -148,5 +152,4 @@
   });
 
   updateGame();
-  generate();
 })();

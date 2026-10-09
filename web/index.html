@@ -35,12 +35,12 @@
           </form>
         </section>
         <section class="results" aria-labelledby="results-title">
-          <div class="section-heading result-heading"><div><span class="eyebrow">YOUR LUCKY NUMBERS</span><h2 id="results-title">这一组，刚刚好。</h2></div><button id="copy-button" class="outline-button" type="button">复制结果</button></div>
-          <div class="result-meta"><span id="result-description"></span><span class="fresh-label"><i></i> 随机生成</span></div>
+          <div class="section-heading result-heading"><div><span class="eyebrow">YOUR LUCKY NUMBERS</span><h2 id="results-title">这一组，刚刚好。</h2></div><button id="copy-button" class="outline-button" type="button" disabled>复制结果</button></div>
+          <div class="result-meta" id="result-meta" hidden><span id="result-description"></span><span class="fresh-label"><i></i> 随机生成</span></div>
           <div id="tickets" class="tickets"></div>
-          <div class="panel summary" id="summary"></div>
+          <div class="panel summary" id="summary" hidden></div>
           <p class="result-note">共享数量为最低交集，其他号码也可能偶然相同。各组独立计费。</p>
-          <div id="status" class="status" role="status" aria-live="polite"></div>
+          <div id="status" class="status" role="status" aria-live="polite">点击「生成号码」开始选号。</div>
         </section>
       </div>
     </main>

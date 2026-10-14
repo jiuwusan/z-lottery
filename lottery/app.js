@@ -176,7 +176,7 @@
     const { config, game, tickets } = currentResult;
     const numbers = values => values.map(n => String(n).padStart(2, '0')).join(' ');
     const text = [
-      `${game.name} ${config.front}+${config.back} · ${config.multiple} 倍 · ${config.periods} 期`,
+      `${game.name} ${config.front}+${config.back} · ${config.multiple}倍${config.append ? '追加' : ''} · ${config.periods} 期`,
       ...tickets.map((ticket, i) => `第 ${i + 1} 组\n${game.frontLabel}：${numbers(ticket.front)}\n${game.backLabel}：${numbers(ticket.back)}`),
     ].join('\n\n');
     try {

@@ -6,7 +6,7 @@ const path = require('node:path');
 
 function engine() {
   const context = vm.createContext({ crypto: require('node:crypto').webcrypto });
-  const source = path.join(__dirname, 'web', 'lottery-core.js');
+  const source = path.join(__dirname, 'lottery', 'lottery-core.js');
   assert.ok(fs.existsSync(source), '浏览器选号逻辑应存在');
   vm.runInContext(fs.readFileSync(source, 'utf8'), context);
   return context.Lottery;

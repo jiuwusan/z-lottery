@@ -174,7 +174,7 @@ node lottery.js --game ssq --front 8 --back 3 --count 4 --same 4,1 --multiple 2 
 
 ## 浏览器页面
 
-`web/` 提供纯 HTML/CSS/JavaScript 选号页面，支持与命令行相同的投注参数，无需安装或构建。可以直接打开 `web/index.html`，或复制整个目录到 Nginx 静态站点。部署说明见 [web/README.md](web/README.md)。
+`lottery/` 提供纯 HTML/CSS/JavaScript 选号页面，支持与命令行相同的投注参数，无需安装或构建。可以直接打开 `lottery/index.html`，或复制整个目录到 Nginx 静态站点。部署说明见 [lottery/README.md](lottery/README.md)。
 
 ## 运行测试
 

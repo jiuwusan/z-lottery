@@ -1,0 +1,129 @@
+name: Build and Push Docker Image
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: docker-publish-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOCKER_IMAGE: jiuwusan/z-lottery
+
+jobs:
+  test:
+    name: Run tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 22
+
+      - name: Run tests
+        run: npm test
+
+      - name: Validate Compose configuration
+        env:
+          API_TOKEN: ci-compose-validation-api-token
+          JOB_TOKEN: ci-compose-validation-job-token
+        run: |
+          docker compose config --quiet
+          docker compose -f docker-compose.yml -f docker-compose.build.yml config --quiet
+
+      - name: Smoke test container and persistent volume
+        shell: bash
+        run: |
+          set -euo pipefail
+          cleanup() {
+            docker logs z-lottery-ci 2>/dev/null || true
+            docker rm -f z-lottery-ci >/dev/null 2>&1 || true
+            docker volume rm z-lottery-ci-data >/dev/null 2>&1 || true
+          }
+          trap cleanup EXIT
+          docker build --tag z-lottery:ci .
+          docker volume create z-lottery-ci-data >/dev/null
+          start_container() {
+            docker run -d --name z-lottery-ci --stop-timeout 15 \
+              -e API_TOKEN=ci-container-test-api-token \
+              -e JOB_TOKEN=ci-container-test-job-token \
+              -v z-lottery-ci-data:/app/data \
+              -p 127.0.0.1:3100:3000 z-lottery:ci >/dev/null
+            for attempt in $(seq 1 30); do
+              if curl -fsS http://127.0.0.1:3100/api/health >/dev/null; then break; fi
+              sleep 1
+            done
+            curl -fsS http://127.0.0.1:3100/api/health >/dev/null
+            docker exec z-lottery-ci node server/healthcheck.js
+            test "$(docker exec z-lottery-ci id -u)" != '0'
+          }
+          start_container
+          curl -fsS http://127.0.0.1:3100/api/bets \
+            -H 'Authorization: Bearer ci-container-test-api-token' \
+            -H 'Content-Type: application/json' \
+            --data '{"game":"dlt","tickets":[{"front":[1,2,3,4,5],"back":[1,2]}],"issues":["26120"]}' >/dev/null
+          docker stop z-lottery-ci >/dev/null
+          docker rm z-lottery-ci >/dev/null
+          start_container
+          curl -fsS http://127.0.0.1:3100/api/bets \
+            -H 'Authorization: Bearer ci-container-test-api-token' \
+            | node -e 'let text=""; process.stdin.on("data", chunk => text += chunk); process.stdin.on("end", () => { require("node:assert/strict").equal(JSON.parse(text).total, 1); });'
+
+  publish:
+    name: Build and publish image
+    needs: test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout source
+        uses: actions/checkout@v6
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ env.DOCKER_IMAGE }}
+          tags: |
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/master' }}
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha
+          flavor: latest=false
+
+      - name: Log in to Docker Hub
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v4
+        with:
+          username: ${{ secrets.OCKERHUB_USERNAME || secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build and push image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: ./Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

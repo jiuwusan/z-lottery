@@ -1,0 +1,8 @@
+{
+  "name": "z-lottery",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Lottery number generator and persistent bet checking service",
+  "engines": { "node": ">=22.13.0" },
+  "scripts": { "start": "node --env-file-if-exists=.env server/index.js", "test": "node --test" }
+}

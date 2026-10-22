@@ -79,5 +79,7 @@
     return { ...result, commonFront, commonBack, tickets };
   }
 
-  root.Lottery = { GAMES, calculate, generate };
+  const api = { GAMES, calculate, generate };
+  if (typeof module !== 'undefined' && module.exports) module.exports = api;
+  else root.Lottery = api;
 })(globalThis);

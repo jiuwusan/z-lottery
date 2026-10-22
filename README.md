@@ -176,8 +176,26 @@ node lottery.js --game ssq --front 8 --back 3 --count 4 --same 4,1 --multiple 2 
 
 `lottery/` 提供纯 HTML/CSS/JavaScript 选号页面，支持与命令行相同的投注参数，无需安装或构建。可以直接打开 `lottery/index.html`，或复制整个目录到 Nginx 静态站点。部署说明见 [lottery/README.md](lottery/README.md)。
 
+## 投注记录与自动验奖服务
+
+新增 Node.js 服务层与 SQLite 数据持久层。页面支持投注列表、保存生成或手工录入的投注、删除及逐期验奖详情；外部定时任务可调用独立鉴权的验奖 API。
+
+后端需要 Node.js 22.13+。复制 `.env.example` 为 `.env` 并设置不同的 `API_TOKEN` 与 `JOB_TOKEN` 后运行 `npm start`，在页面“投注记录”中输入管理令牌连接。服务启动后访问 `http://127.0.0.1:3000/`。生产部署需同时运行 Node.js 并让 Nginx 转发 `/api/`，原有离线选号仍可独立使用。
+
+接口、数据结构、部署、外部 cron 调用及验奖范围见 [服务说明](server/README.md)。
+
+## Docker Compose 部署
+
+参考 z-media-workflow，使用 `jiuwusan/z-lottery:latest`、外部 `wk` 网络和 `lottery-data` 命名卷，页面与 API 共用容器，默认访问端口 `3100`。首次配置 `.env` 中两个不同的令牌后，可以从源码构建启动：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
+```
+
+需先确认 `wk` 网络存在。镜像发布、部署更新、外部定时验奖、Nginx 和数据库迁移见 [Docker Compose 部署说明](docs/docker-compose.md)。
+
 ## 运行测试
 
 ```bash
-node --test lottery.test.js web.test.js
+npm test
 ```

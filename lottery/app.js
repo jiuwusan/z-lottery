@@ -144,6 +144,7 @@
       const result = Lottery.generate(inputConfig());
       render(result);
       currentResult = result;
+      document.dispatchEvent(new CustomEvent('lottery:generated', { detail: result }));
       revision++;
       copyButton.disabled = false;
       showError('');

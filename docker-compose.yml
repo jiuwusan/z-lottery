@@ -1,0 +1,33 @@
+services:
+  z-lottery:
+    image: jiuwusan/z-lottery:latest
+    container_name: z-lottery
+    init: true
+    ports:
+      - '3100:3000'
+    environment:
+      NODE_ENV: production
+      TZ: Asia/Shanghai
+      HOST: 0.0.0.0
+      PORT: '3000'
+      DATABASE_PATH: /app/data/lottery.sqlite
+      API_TOKEN: "${API_TOKEN:?Set API_TOKEN in .env}"
+      JOB_TOKEN: "${JOB_TOKEN:?Set JOB_TOKEN in .env}"
+    volumes:
+      - lottery-data:/app/data
+    restart: always
+    stop_grace_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: '10m'
+        max-file: '3'
+    networks:
+      - wk
+
+networks:
+  wk:
+    external: true
+
+volumes:
+  lottery-data:

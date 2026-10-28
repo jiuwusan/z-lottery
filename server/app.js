@@ -5,6 +5,7 @@ const path = require('node:path');
 const { AppError } = require('./domain');
 
 const staticFiles = {
+  'favicon.svg': ['favicon.svg', 'image/svg+xml'],
   '': ['index.html', 'text/html'], 'index.html': ['index.html', 'text/html'],
   'styles.css': ['styles.css', 'text/css'], 'app.js': ['app.js', 'text/javascript'],
   'lottery-core.js': ['lottery-core.js', 'text/javascript'], 'records.js': ['records.js', 'text/javascript'],

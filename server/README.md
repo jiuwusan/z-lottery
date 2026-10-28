@@ -6,17 +6,15 @@
 
 后端要求 **Node.js 22.13+**，使用内置 `node:http`、`node:sqlite` 和 `fetch`，无需安装第三方依赖。Node.js 22 的 SQLite 会输出 ExperimentalWarning，这是运行时提示。原有 CLI 和离线随机选号仍可使用 Node.js 18+。
 
-1. 将根目录 `.env.example` 复制为 `.env`。
-2. 生成随机令牌，填入 `JOB_TOKEN`（外部验奖任务）。例如运行 `node -p "require('node:crypto').randomBytes(32).toString('hex')"`。令牌至少 16 字符。
-3. 在项目根目录运行 `npm start`，打开 `http://127.0.0.1:3000/`。投注记录自动加载，可直接新增和删除。无需 `npm install`。
+在项目根目录运行 `npm start`，打开 `http://127.0.0.1:3000/`。无需安装依赖或配置令牌，投注记录自动加载，可直接新增、删除和调用验奖。需要自定义端口或数据库路径时，将 `.env.example` 复制为 `.env` 后修改。
 
 配置：`HOST` 默认 `127.0.0.1`；`PORT` 默认 `3000`；`DATABASE_PATH` 默认项目内 `data/lottery.sqlite`。相对数据库路径以进程工作目录为准。`.env` 和数据库文件已忽略，不应提交。
 
-当前为**共享记录**，页面及投注列表、新增、详情和删除接口无需认证，访问者管理同一批投注。仅外部验奖任务接口需要 `JOB_TOKEN`，该令牌不写入前端文件或 URL。
+当前为**共享记录**，页面和所有接口均可直接访问，访问者管理同一批投注，验奖任务也不需要令牌。
 
 ## 分层
 
-- `app.js`：HTTP 路由、鉴权、请求限制、错误响应、静态文件白名单。
+- `app.js`：HTTP 路由、请求限制、错误响应、静态文件白名单。
 - `service.js`：投注用例、逐期验奖、批次游标、任务互斥。
 - `domain.js`：投注验证、金额重算、复式组合计数及奖级规则。
 - `repository.js`：SQLite 表、事务、分页、开奖缓存和验奖结果。
@@ -29,7 +27,7 @@ SQLite 启用外键、WAL 和 5 秒 busy timeout。新投注先保存时间、�
 
 ## API
 
-仅验奖任务接口使用 `Authorization: Bearer <JOB_TOKEN>`，投注接口无需令牌。带请求体的接口需要 `Content-Type: application/json`，上限 512 KiB；不开放跨域。
+所有接口均无需令牌和认证请求头。带请求体的接口需要 `Content-Type: application/json`，上限 512 KiB；不开放跨域。
 
 | 方法与路径 | 令牌 | 说明 |
 |---|---|---|
@@ -38,7 +36,7 @@ SQLite 启用外键、WAL 和 5 秒 busy timeout。新投注先保存时间、�
 | `GET /api/bets/:id` | 无 | 投注详情，含各期开奖号码与逐组中奖结果 |
 | `POST /api/bets` | 无 | 新增投注，成功返回 201 与已保存记录 |
 | `DELETE /api/bets/:id` | 无 | 删除，成功返回 204，不存在返回 404 |
-| `POST /api/jobs/check` | JOB_TOKEN | 查询官方开奖并验奖 |
+| `POST /api/jobs/check` | 无 | 查询官方开奖并验奖 |
 
 新增请求示例：
 
@@ -86,6 +84,10 @@ SQLite 启用外键、WAL 和 5 秒 busy timeout。新投注先保存时间、�
 
 服务不会自行启动定时器。任务接口请求体可为 `{}`，也可指定：
 
+```bash
+curl -X POST http://127.0.0.1:3000/api/jobs/check -H 'Content-Type: application/json' -d '{}'
+```
+
 ```json
 { "game": "dlt", "limit": 20, "after": "dlt:26119" }
 ```
@@ -103,18 +105,18 @@ SQLite 启用外键、WAL 和 5 秒 busy timeout。新投注先保存时间、�
 提供的任务客户端会遍历分页、输出批次摘要，并在任何批次出错时以非零状态退出：
 
 ```bash
-node --env-file=.env server/check-job.js
+node --env-file-if-exists=.env server/check-job.js
 ```
 
-默认调用 `http://127.0.0.1:3000/api/jobs/check`（端口遵循 `PORT`），远程调度时配置 `JOB_URL=https://lottery.example.com/api/jobs/check` 与 `JOB_TOKEN`，该客户端本身不需要数据库文件。
+默认调用 `http://127.0.0.1:3000/api/jobs/check`（端口遵循 `PORT`），远程调度时只需配置 `JOB_URL=https://lottery.example.com/api/jobs/check`，该客户端本身不需要数据库文件或令牌。
 
 Linux cron 示例，确保使用服务器实际的 node 路径与工作目录，按服务器时区每天 21～23 点每 20 分钟检查：
 
 ```cron
-*/20 21-23 * * * cd /opt/z-lottery && /usr/bin/node --env-file=.env server/check-job.js >> /var/log/z-lottery-check.log 2>&1
+*/20 21-23 * * * cd /opt/z-lottery && /usr/bin/node --env-file-if-exists=.env server/check-job.js >> /var/log/z-lottery-check.log 2>&1
 ```
 
-也可以由现有调度平台直接发送 POST，令牌放请求头。建议调度平台在非 2xx 或网络失败时重试；同一任务客户端不应重叠运行。官方数据可能稍晚更新，因此建议多次执行，而不是只在开奖时间调用一次。
+也可以由现有调度平台直接发送 JSON POST，无需认证请求头。建议调度平台在非 2xx 或网络失败时重试；同一任务客户端不应重叠运行。官方数据可能稍晚更新，因此建议多次执行，而不是只在开奖时间调用一次。
 
 ## Nginx 与进程托管
 
@@ -131,7 +133,6 @@ server {
     location /api/ {
         proxy_pass http://127.0.0.1:3000;
         proxy_set_header Host $host;
-        proxy_set_header Authorization $http_authorization;
         proxy_read_timeout 600s;
         client_max_body_size 512k;
     }
@@ -155,7 +156,7 @@ After=network.target
 Type=simple
 User=zlottery
 WorkingDirectory=/opt/z-lottery
-EnvironmentFile=/opt/z-lottery/.env
+EnvironmentFile=-/opt/z-lottery/.env
 ExecStart=/usr/bin/node /opt/z-lottery/server/index.js
 Restart=on-failure
 RestartSec=5
@@ -183,4 +184,4 @@ WantedBy=multi-user.target
 npm test
 ```
 
-包括原 CLI/浏览器核心测试，以及服务端参数校验、复式奖级统计、规则切换、SQLite 重启/删除/分页、逐期幂等验奖、上游异常及 HTTP 鉴权/请求限制测试。测试使用隔离临时数据库与受控开奖数据，不依赖实时网络。
+包括原 CLI/浏览器核心测试，以及服务端参数校验、复式奖级统计、规则切换、SQLite 重启/删除/分页、逐期幂等验奖、上游异常及 HTTP 无令牌调用/请求限制测试。测试使用隔离临时数据库与受控开奖数据，不依赖实时网络。

@@ -1,6 +1,5 @@
 'use strict';
 const http = require('node:http');
-const { createHash, timingSafeEqual } = require('node:crypto');
 const { readFile } = require('node:fs/promises');
 const path = require('node:path');
 const { AppError } = require('./domain');
@@ -10,12 +9,6 @@ const staticFiles = {
   'styles.css': ['styles.css', 'text/css'], 'app.js': ['app.js', 'text/javascript'],
   'lottery-core.js': ['lottery-core.js', 'text/javascript'], 'records.js': ['records.js', 'text/javascript'],
 };
-
-function authenticate(request, token) {
-  const actual = request.headers.authorization || '';
-  const hash = value => createHash('sha256').update(value).digest();
-  if (!timingSafeEqual(hash(actual), hash('Bearer ' + token))) throw new AppError('访问令牌无效或未提供', 401);
-}
 
 async function readJson(request) {
   if (request.headers['content-type']?.split(';')[0].trim() !== 'application/json') throw new AppError('请使用 application/json', 415);
@@ -35,10 +28,7 @@ async function readJson(request) {
   } catch { throw new AppError('请求体必须为 JSON 对象'); }
 }
 
-function createServer({ service, jobToken, logger = console }) {
-  if (typeof jobToken !== 'string' || jobToken.length < 16) {
-    throw new Error('JOB_TOKEN 必须配置为至少 16 位令牌');
-  }
+function createServer({ service, logger = console }) {
   const server = http.createServer(async (request, response) => {
     response.setHeader('X-Content-Type-Options', 'nosniff');
     response.setHeader('Cache-Control', 'no-store');
@@ -53,7 +43,6 @@ function createServer({ service, jobToken, logger = console }) {
       if (route.startsWith('/api/')) {
         const isJob = route === '/api/jobs/check';
         if (isJob) {
-          authenticate(request, jobToken);
           if (request.method !== 'POST') throw new AppError('该接口仅支持 POST', 405);
           const report = await service.check(await readJson(request));
           return send(report.errors.length ? 502 : 200, report);
@@ -84,7 +73,6 @@ function createServer({ service, jobToken, logger = console }) {
     } catch (error) {
       if (response.destroyed) return;
       if (!(error instanceof AppError)) logger.error('Request failed:', error);
-      if (error.status === 401) response.setHeader('WWW-Authenticate', 'Bearer');
       send(error instanceof AppError ? error.status : 500, { error: error instanceof AppError ? error.message : '服务内部错误' });
     }
   });

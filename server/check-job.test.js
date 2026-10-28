@@ -8,7 +8,7 @@ async function runClient(t, handler) {
   const server = http.createServer(async (request, response) => {
     const chunks = [];
     for await (const chunk of request) chunks.push(chunk);
-    assert.equal(request.headers.authorization, 'Bearer isolated-job-client-test-token');
+    assert.equal(request.headers.authorization, undefined);
     const { status, body } = handler(JSON.parse(Buffer.concat(chunks).toString()));
     response.writeHead(status, { 'Content-Type': 'application/json' });
     response.end(JSON.stringify(body));
@@ -16,8 +16,10 @@ async function runClient(t, handler) {
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(() => new Promise(resolve => server.close(resolve)));
   return new Promise((resolve, reject) => {
+    const environment = { ...process.env, JOB_URL: `http://127.0.0.1:${server.address().port}/api/jobs/check` };
+    delete environment.JOB_TOKEN;
     const child = spawn(process.execPath, [path.join(__dirname, 'check-job.js')], {
-      env: { ...process.env, JOB_TOKEN: 'isolated-job-client-test-token', JOB_URL: `http://127.0.0.1:${server.address().port}/api/jobs/check` },
+      env: environment,
       windowsHide: true,
     });
     let stdout = '', stderr = '';
@@ -43,7 +45,7 @@ test('外部任务客户端遍历游标，失败批次继续处理并以非零�
   assert.equal(requests, 2);
   assert.equal(result.code, 1);
   assert.equal(result.stdout.trim().split('\n').length, 2);
-  assert.ok(!result.stdout.includes('isolated-job-client-test-token'));
+  assert.equal(result.stderr, '');
 });
 
 test('外部任务客户端成功退出，409 冲突不继续请求', async t => {

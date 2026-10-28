@@ -3,16 +3,15 @@ const assert = require('node:assert/strict');
 const { Repository } = require('./repository');
 const { BetService } = require('./service');
 const { createServer } = require('./app');
-const jobToken = 'test-job-token-at-least-16';
 
 async function setup(t, provider = { getDraw: async () => null }, clock = () => new Date()) {
   const repo = new Repository(':memory:');
-  const server = createServer({ service: new BetService(repo, provider, { clock }), jobToken });
+  const server = createServer({ service: new BetService(repo, provider, { clock }) });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   t.after(async () => { await new Promise(resolve => server.close(resolve)); repo.close(); });
   const base = `http://127.0.0.1:${server.address().port}`;
-  const request = (route, { token, method = 'GET', body } = {}) => fetch(base + route, {
-    method, headers: { ...(token ? { Authorization: 'Bearer ' + token } : {}), ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
+  const request = (route, { method = 'GET', body } = {}) => fetch(base + route, {
+    method, headers: { ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
   return { request, base };
@@ -32,12 +31,10 @@ test('HTTP 新增、分页、详情、删除直接访问，无需令牌', async 
   assert.equal((await request('/api/bets/' + body.id)).status, 404);
 });
 
-test('任务使用独立令牌，未来期号保持待开奖', async t => {
+test('任务接口无需令牌直接调用，未来期号保持待开奖', async t => {
   const { request } = await setup(t);
   await request('/api/bets', { method: 'POST', body: bet });
-  assert.equal((await request('/api/jobs/check', { method: 'POST', body: {} })).status, 401);
-  assert.equal((await request('/api/jobs/check', { method: 'POST', token: 'wrong-token', body: {} })).status, 401);
-  const result = await request('/api/jobs/check', { method: 'POST', token: jobToken, body: {} });
+  const result = await request('/api/jobs/check', { method: 'POST', body: {} });
   assert.equal(result.status, 200);
   assert.equal((await result.json()).waiting, 1);
 });
@@ -45,7 +42,7 @@ test('任务使用独立令牌，未来期号保持待开奖', async t => {
 test('上游故障任务返回 502，原始投注不受影响', async t => {
   const { request } = await setup(t, { getDraw: async () => { throw new Error('upstream timeout'); } });
   await request('/api/bets', { method: 'POST', body: bet });
-  const response = await request('/api/jobs/check', { method: 'POST', token: jobToken, body: {} });
+  const response = await request('/api/jobs/check', { method: 'POST', body: {} });
   assert.equal(response.status, 502);
   assert.equal((await response.json()).errors.length, 1);
   assert.equal((await (await request('/api/bets')).json()).items[0].status, 'pending');
@@ -90,7 +87,7 @@ test('HTTP 按实际截止时间匹配开奖，未匹配期数保留待开奖', 
   const response = await request('/api/bets', { method: 'POST', body: { ...withoutIssues, periods: 2, placedAt: '2026-10-29T20:10:00+08:00' } });
   assert.equal(response.status, 201);
   const created = await response.json();
-  assert.equal((await request('/api/jobs/check', { method: 'POST', token: jobToken, body: {} })).status, 200);
+  assert.equal((await request('/api/jobs/check', { method: 'POST', body: {} })).status, 200);
   const result = await (await request('/api/bets/' + created.id)).json();
   assert.deepEqual(result.issues, ['2026125']);
   assert.equal(result.status, 'partial');

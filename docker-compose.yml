@@ -2,7 +2,6 @@ services:
   z-lottery:
     image: jiuwusan/z-lottery:latest
     container_name: z-lottery
-    init: true
     ports:
       - '3100:3000'
     environment:
@@ -11,7 +10,6 @@ services:
       HOST: 0.0.0.0
       PORT: '3000'
       DATABASE_PATH: /app/data/lottery.sqlite
-      JOB_TOKEN: "${JOB_TOKEN:?Set JOB_TOKEN in .env}"
     volumes:
       - lottery-data:/app/data
     restart: always

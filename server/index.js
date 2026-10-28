@@ -10,7 +10,7 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('PORT å
 const repository = new Repository(process.env.DATABASE_PATH || path.join(__dirname, '..', 'data', 'lottery.sqlite'));
 const provider = new DrawProvider();
 const service = new BetService(repository, provider);
-const server = createServer({ service, jobToken: process.env.JOB_TOKEN });
+const server = createServer({ service });
 const host = process.env.HOST || '127.0.0.1';
 server.listen(port, host, () => console.log(`z-lottery listening on http://${host}:${port}`));
 server.on('error', error => { console.error(error.message); repository.close(); process.exitCode = 1; });

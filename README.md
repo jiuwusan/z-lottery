@@ -178,15 +178,15 @@ node lottery.js --game ssq --front 8 --back 3 --count 4 --same 4,1 --multiple 2 
 
 ## 投注记录与自动验奖服务
 
-新增 Node.js 服务层与 SQLite 数据持久层。页面使用随机选号表单新增投注，保存投注时间和连续期数；验奖时根据实际销售截止时间匹配后续连续开奖记录，不提前预测期号。支持投注列表、删除及逐期验奖详情，外部定时任务可调用独立鉴权的验奖 API。
+新增 Node.js 服务层与 SQLite 数据持久层。页面使用随机选号表单新增投注，保存投注时间和连续期数；验奖时根据实际销售截止时间匹配后续连续开奖记录，不提前预测期号。支持投注列表、删除及逐期验奖详情，外部定时任务可直接调用验奖 API，无需令牌。
 
-后端需要 Node.js 22.13+。复制 `.env.example` 为 `.env` 并设置验奖任务令牌 `JOB_TOKEN` 后运行 `npm start`，访问 `http://127.0.0.1:3000/` 即可直接查看、新增和删除投注。生产部署需同时运行 Node.js 并让 Nginx 转发 `/api/`，原有离线选号仍可独立使用。
+后端需要 Node.js 22.13+。直接运行 `npm start`，访问 `http://127.0.0.1:3000/` 即可使用；自定义端口或数据库路径时可复制 `.env.example` 为 `.env` 修改。生产部署需同时运行 Node.js 并让 Nginx 转发 `/api/`，原有离线选号仍可独立使用。
 
 接口、数据结构、部署、外部 cron 调用及验奖范围见 [服务说明](server/README.md)。
 
 ## Docker Compose 部署
 
-参考 z-media-workflow，使用 `jiuwusan/z-lottery:latest`、外部 `wk` 网络和 `lottery-data` 命名卷，页面与 API 共用容器，默认访问端口 `3100`。首次配置 `.env` 中的 `JOB_TOKEN` 后，可以从源码构建启动：
+参考 z-media-workflow，使用 `jiuwusan/z-lottery:latest`、外部 `wk` 网络和 `lottery-data` 命名卷，页面与 API 共用容器，默认访问端口 `3100`。无需 `.env` 或令牌，可以从源码构建启动：
 
 ```bash
 docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build

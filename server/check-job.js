@@ -2,15 +2,13 @@
 
 // External schedulers run this client; the HTTP service itself does not install a timer.
 async function main() {
-  const token = process.env.JOB_TOKEN;
-  if (!token) throw new Error('请配置 JOB_TOKEN');
   const url = process.env.JOB_URL || `http://127.0.0.1:${process.env.PORT || 3000}/api/jobs/check`;
   let after;
   let failed = false;
   for (let batch = 0; batch < 1000; batch++) {
     const response = await fetch(url, {
       method: 'POST', signal: AbortSignal.timeout(180000),
-      headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ limit: 20, ...(after ? { after } : {}) }),
     });
     const report = await response.json();

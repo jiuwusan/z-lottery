@@ -37,8 +37,6 @@ jobs:
         run: npm test
 
       - name: Validate Compose configuration
-        env:
-          JOB_TOKEN: ci-compose-validation-job-token
         run: |
           docker compose config --quiet
           docker compose -f docker-compose.yml -f docker-compose.build.yml config --quiet
@@ -57,7 +55,6 @@ jobs:
           docker volume create z-lottery-ci-data >/dev/null
           start_container() {
             docker run -d --name z-lottery-ci --stop-timeout 15 \
-              -e JOB_TOKEN=ci-container-test-job-token \
               -v z-lottery-ci-data:/app/data \
               -p 127.0.0.1:3100:3000 z-lottery:ci >/dev/null
             for attempt in $(seq 1 30); do

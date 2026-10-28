@@ -38,7 +38,6 @@ jobs:
 
       - name: Validate Compose configuration
         env:
-          API_TOKEN: ci-compose-validation-api-token
           JOB_TOKEN: ci-compose-validation-job-token
         run: |
           docker compose config --quiet
@@ -58,7 +57,6 @@ jobs:
           docker volume create z-lottery-ci-data >/dev/null
           start_container() {
             docker run -d --name z-lottery-ci --stop-timeout 15 \
-              -e API_TOKEN=ci-container-test-api-token \
               -e JOB_TOKEN=ci-container-test-job-token \
               -v z-lottery-ci-data:/app/data \
               -p 127.0.0.1:3100:3000 z-lottery:ci >/dev/null
@@ -72,14 +70,12 @@ jobs:
           }
           start_container
           curl -fsS http://127.0.0.1:3100/api/bets \
-            -H 'Authorization: Bearer ci-container-test-api-token' \
             -H 'Content-Type: application/json' \
-            --data '{"game":"dlt","tickets":[{"front":[1,2,3,4,5],"back":[1,2]}],"issues":["26120"]}' >/dev/null
+            --data '{"game":"dlt","tickets":[{"front":[1,2,3,4,5],"back":[1,2]}],"periods":3}' >/dev/null
           docker stop z-lottery-ci >/dev/null
           docker rm z-lottery-ci >/dev/null
           start_container
           curl -fsS http://127.0.0.1:3100/api/bets \
-            -H 'Authorization: Bearer ci-container-test-api-token' \
             | node -e 'let text=""; process.stdin.on("data", chunk => text += chunk); process.stdin.on("end", () => { require("node:assert/strict").equal(JSON.parse(text).total, 1); });'
 
   publish:

@@ -161,6 +161,7 @@
     updateSharedLimits();
     showError('');
     revision++;
+    document.dispatchEvent(new Event('lottery:settings-changed'));
     statusElement.textContent = '设置已修改，点击「生成号码」更新结果和金额。';
   });
   document.querySelector('#reset-button').addEventListener('click', () => {
@@ -168,6 +169,7 @@
     updateGame();
     showError('');
     revision++;
+    document.dispatchEvent(new Event('lottery:settings-changed'));
     statusElement.textContent = '已恢复默认设置，点击「生成号码」生成结果。';
   });
 

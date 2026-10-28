@@ -18,7 +18,7 @@
       <section class="intro"><div class="eyebrow">RANDOM NUMBER STUDIO</div><h1>把选择，交给随机。</h1><p>设定你的投注方式，生成一组属于今天的号码。</p></section>
       <div class="workspace">
         <section class="panel settings" aria-labelledby="settings-title">
-          <div class="section-heading"><h2 id="settings-title">选号设置</h2><span class="step">01 / CONFIGURE</span></div>
+          <div class="section-heading"><h2 id="settings-title">新增投注 · 随机选号</h2><span class="step">01 / CONFIGURE</span></div>
           <form id="settings-form" novalidate>
             <fieldset class="game-switch"><legend class="sr-only">彩票类型</legend><label><input type="radio" name="game" value="dlt" checked><span>超级大乐透<small>35 选 5 + 12 选 2</small></span></label><label><input type="radio" name="game" value="ssq"><span>双色球<small>33 选 6 + 16 选 1</small></span></label></fieldset>
             <div class="field-grid">
@@ -26,7 +26,7 @@
               <div class="field"><label id="back-label" for="setting-back">后区数量</label><input id="setting-back" name="back" type="number" min="2" max="12" step="1" value="3" required><small id="back-hint">选择 2～12 个号码</small></div>
               <div class="field"><label for="setting-count">生成组数</label><input id="setting-count" name="count" type="number" min="1" max="1000" step="1" value="4" required><small>每次最多 1,000 组</small></div>
               <div class="field"><label for="setting-multiple">投注倍数</label><input id="setting-multiple" name="multiple" type="number" min="1" step="1" value="1" required><small>每注的投注倍数</small></div>
-              <div class="field wide"><label for="setting-periods">连续期数</label><input id="setting-periods" name="periods" type="number" min="1" step="1" value="1" required><small>同一批号码连续使用，不重新选号</small></div>
+              <div class="field wide"><label for="setting-periods">连续期数</label><input id="setting-periods" name="periods" type="number" min="1" max="100" step="1" value="1" required><small>同一批号码连续使用 1～100 期，按投注时间匹配实际开奖</small></div>
             </div>
             <div class="shared-section"><div class="subheading">共享号码 <span>可选</span></div><p>让每组保留相同的号码，其余号码随机补齐。</p><div class="field-grid"><div class="field"><label id="same-front-label" for="setting-sameFront">共享前区</label><input id="setting-sameFront" name="sameFront" type="number" min="0" max="6" step="1" value="0" required></div><div class="field"><label id="same-back-label" for="setting-sameBack">共享后区</label><input id="setting-sameBack" name="sameBack" type="number" min="0" max="3" step="1" value="0" required></div></div></div>
             <label class="append-option" id="append-option"><input name="append" type="checkbox"><span>大乐透追加投注<small>每注增加 1 元</small></span><span class="price-tag">+ ¥1</span></label>
@@ -40,34 +40,28 @@
           <div class="result-meta" id="result-meta" hidden><span id="result-description"></span><span class="fresh-label"><i></i> 随机生成</span></div>
           <div id="tickets" class="tickets"></div>
           <div class="panel summary" id="summary" hidden></div>
+          <section class="panel save-panel" id="save-panel" hidden aria-labelledby="save-title">
+            <div class="section-heading"><h3 id="save-title">保存这次投注</h3></div>
+            <label for="bet-placed-at">投注时间（北京时间）<input id="bet-placed-at" type="datetime-local" step="60"><small class="records-help">留空使用保存时的时间，也可填写实际购买时间。</small></label>
+            <div id="issue-preview" class="issue-preview" aria-live="polite">按投注时间匹配后续实际开奖。</div>
+            <p id="issue-note" class="records-help">早于当期销售截止时间才计入当期；截止后顺延到下一次实际开奖。休市与跨年随实际开奖记录处理。</p>
+            <label for="bet-note">备注<input id="bet-note" type="text" maxlength="200" placeholder="可选，最多 200 字"></label>
+            <button id="save-bet" class="primary-button" type="button" disabled>保存投注<span class="button-arrow" aria-hidden="true">→</span></button>
+            <p id="save-status" class="records-status" role="status" aria-live="polite"></p>
+          </section>
           <p class="result-note">共享数量为最低交集，其他号码也可能偶然相同。各组独立计费。</p>
           <div id="status" class="status" role="status" aria-live="polite">点击「生成号码」开始选号。</div>
         </section>
       </div>
       <section class="bet-records" aria-labelledby="records-title">
         <div class="section-heading"><div><span class="eyebrow">BETTING JOURNAL</span><h2 id="records-title">投注记录</h2></div><span class="step">02 / KEEP TRACK</span></div>
-        <p class="records-intro">保存实际投注的号码与期号，开奖后由服务自动验奖。</p>
-        <div class="panel connection-bar"><label for="api-token">管理令牌<input id="api-token" type="password" autocomplete="off" placeholder="输入服务端 API_TOKEN"></label><button id="connect-button" class="outline-button" type="button">连接 / 刷新</button><small>令牌仅用于本次页面，不保存到浏览器。</small></div>
-        <div class="records-layout">
-          <form id="bet-form" class="panel bet-editor">
-            <div class="section-heading"><h3>新增投注</h3><button id="use-generated" class="outline-button" type="button" disabled>填入生成结果</button></div>
-            <div class="record-fields">
-              <label for="bet-game">彩票类型<select id="bet-game" name="game"><option value="dlt">超级大乐透</option><option value="ssq">双色球</option></select></label>
-              <label for="bet-multiple">投注倍数<input id="bet-multiple" name="multiple" type="number" value="1" min="1" step="1" required></label>
-              <label class="record-wide" for="bet-issues">投注期号<textarea id="bet-issues" name="issues" rows="2" required placeholder="大乐透如 26120；多期如 26120,26121"></textarea><small id="bet-issue-hint">逐期填写，以逗号、空格或换行分隔；不自动推算连续期号。</small></label>
-              <label class="record-wide" for="bet-numbers">投注号码<textarea id="bet-numbers" name="numbers" rows="5" required placeholder="每行一组：01 02 03 04 05 + 01 02"></textarea><small>前后区用 + 分隔；每行一组，所有组使用相同选号规格。</small></label>
-              <label class="record-wide" for="bet-note">备注<input id="bet-note" name="note" type="text" maxlength="200" placeholder="可选，最多 200 字"></label>
-            </div>
-            <label id="bet-append-label" class="append-option"><input id="bet-append" name="append" type="checkbox"><span>大乐透追加投注</span></label>
-            <button id="save-bet" class="primary-button" type="submit">保存投注<span class="button-arrow" aria-hidden="true">→</span></button>
-            <p class="records-help" id="save-hint">也可以直接手工录入已购买的号码。</p>
-          </form>
+        <p class="records-intro">保存投注时间与连续期数，按后续实际开奖记录逐期验奖。</p>
+        <div class="record-toolbar"><a href="#settings-title" class="outline-button">新增投注</a><button id="connect-button" class="outline-button" type="button">刷新列表</button></div>
           <div class="record-list-area">
             <div class="record-filters"><label for="filter-game" class="sr-only">按彩种筛选</label><select id="filter-game"><option value="">所有彩种</option><option value="dlt">超级大乐透</option><option value="ssq">双色球</option></select><label for="filter-status" class="sr-only">按验奖状态筛选</label><select id="filter-status"><option value="">所有状态</option><option value="pending">待开奖</option><option value="partial">部分已开奖</option><option value="prize_pending">奖金待补全</option><option value="won">已中奖</option><option value="lost">未中奖</option></select><span id="record-count"></span></div>
-            <div id="bet-list" class="bet-list"><p class="empty-records">连接服务后查看已保存的投注。</p></div>
+            <div id="bet-list" class="bet-list"><p class="empty-records">正在加载投注记录…</p></div>
             <div class="record-pagination"><button id="previous-page" class="outline-button" type="button" disabled>上一页</button><span id="page-label">第 1 页</span><button id="next-page" class="outline-button" type="button" disabled>下一页</button></div>
           </div>
-        </div>
         <p id="records-status" class="records-status" role="status" aria-live="polite"></p>
         <p class="records-help">验奖展示基础税前奖金，不含特别派奖；实际兑奖以官方公告和实体彩票为准。</p>
       </section>

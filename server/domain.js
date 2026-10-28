@@ -1,9 +1,7 @@
 'use strict';
 const { GAMES, calculate } = require('../lottery/lottery-core');
-
-class AppError extends Error {
-  constructor(message, status = 400) { super(message); this.status = status; }
-}
+const { AppError } = require('./errors');
+const { normalizePlacedAt } = require('./draw-matching');
 
 function normalizeIssue(game, issue) {
   if (typeof issue !== 'string') throw new AppError('期号必须是字符串');
@@ -25,7 +23,7 @@ function validateNumbers(numbers, minCount, max, label) {
   return [...numbers].sort((a, b) => a - b);
 }
 
-function normalizeBet(input) {
+function normalizeBet(input, { now = new Date() } = {}) {
   if (!input || typeof input !== 'object' || !Object.hasOwn(GAMES, input.game)) throw new AppError('请选择大乐透或双色球');
   const game = GAMES[input.game];
   if (!Array.isArray(input.tickets) || input.tickets.length < 1 || input.tickets.length > 1000) throw new AppError('每条投注需要 1～1000 组号码');
@@ -34,8 +32,12 @@ function normalizeBet(input) {
     back: validateNumbers(ticket?.back, game.backPick, game.backMax, game.backLabel),
   }));
   if (tickets.some(t => t.front.length !== tickets[0].front.length || t.back.length !== tickets[0].back.length)) throw new AppError('同一条投注的各组选号数量必须相同');
-  if (!Array.isArray(input.issues) || input.issues.length < 1 || input.issues.length > 100) throw new AppError('请明确列出 1～100 个投注期号');
-  const issues = input.issues.map(issue => normalizeIssue(input.game, issue)).sort();
+  const matchMode = Object.hasOwn(input, 'issues') ? 'issue' : 'date';
+  if (matchMode === 'issue' && (!Array.isArray(input.issues) || input.issues.length < 1 || input.issues.length > 100)) throw new AppError('请明确列出 1～100 个投注期号');
+  const issues = matchMode === 'issue' ? input.issues.map(issue => normalizeIssue(input.game, issue)).sort() : [];
+  const periods = matchMode === 'issue' ? issues.length : (input.periods ?? 1);
+  if (!Number.isInteger(periods) || periods < 1 || periods > 100) throw new AppError('连续期数必须是 1～100 的整数');
+  const placedAt = normalizePlacedAt(input.placedAt, now);
   if (new Set(issues).size !== issues.length) throw new AppError('投注期号不能重复');
   if (input.append !== undefined && typeof input.append !== 'boolean') throw new AppError('追加状态必须为布尔值');
   if (input.multiple !== undefined && (!Number.isSafeInteger(input.multiple) || input.multiple < 1)) throw new AppError('投注倍数必须是正整数');
@@ -43,10 +45,10 @@ function normalizeBet(input) {
   let amounts;
   try {
     amounts = calculate({ game: input.game, front: tickets[0].front.length, back: tickets[0].back.length,
-      count: tickets.length, multiple: input.multiple ?? 1, periods: issues.length, append: input.append ?? false });
+      count: tickets.length, multiple: input.multiple ?? 1, periods, append: input.append ?? false });
   } catch (error) { throw new AppError(error.message); }
   if (!Number.isSafeInteger(amounts.totalAmount * 100)) throw new AppError('投注金额过大');
-  return { config: amounts.config, tickets, issues, note: input.note?.trim() || '', totalAmount: amounts.totalAmount, amountPerPeriod: amounts.amountPerPeriod };
+  return { config: amounts.config, tickets, issues, matchMode, placedAt, note: input.note?.trim() || '', totalAmount: amounts.totalAmount, amountPerPeriod: amounts.amountPerPeriod };
 }
 
 function choose(n, k) {

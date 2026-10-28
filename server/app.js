@@ -35,9 +35,9 @@ async function readJson(request) {
   } catch { throw new AppError('请求体必须为 JSON 对象'); }
 }
 
-function createServer({ service, apiToken, jobToken, logger = console }) {
-  if (typeof apiToken !== 'string' || apiToken.length < 16 || typeof jobToken !== 'string' || jobToken.length < 16 || apiToken === jobToken) {
-    throw new Error('API_TOKEN 和 JOB_TOKEN 必须分别配置为不同的至少 16 位令牌');
+function createServer({ service, jobToken, logger = console }) {
+  if (typeof jobToken !== 'string' || jobToken.length < 16) {
+    throw new Error('JOB_TOKEN 必须配置为至少 16 位令牌');
   }
   const server = http.createServer(async (request, response) => {
     response.setHeader('X-Content-Type-Options', 'nosniff');
@@ -52,15 +52,18 @@ function createServer({ service, apiToken, jobToken, logger = console }) {
       if (route === '/api/health' && request.method === 'GET') return send(200, { ok: true });
       if (route.startsWith('/api/')) {
         const isJob = route === '/api/jobs/check';
-        authenticate(request, isJob ? jobToken : apiToken);
         if (isJob) {
+          authenticate(request, jobToken);
           if (request.method !== 'POST') throw new AppError('该接口仅支持 POST', 405);
           const report = await service.check(await readJson(request));
           return send(report.errors.length ? 502 : 200, report);
         }
         if (route === '/api/bets') {
           if (request.method === 'GET') return send(200, service.list(Object.fromEntries(url.searchParams)));
-          if (request.method === 'POST') return send(201, service.create(await readJson(request)));
+          if (request.method === 'POST') {
+            const input = await readJson(request);
+            return send(201, service.create(input));
+          }
           throw new AppError('该接口仅支持 GET 和 POST', 405);
         }
         const match = /^\/api\/bets\/([1-9]\d*)$/.exec(route);

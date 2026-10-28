@@ -6,15 +6,15 @@
 
 部署目录需要 `docker-compose.yml` 和 `.env`；本地构建还需要完整源码和 `docker-compose.build.yml`。
 
-首次将 `.env.example` 复制为 `.env`，将 `API_TOKEN` 和 `JOB_TOKEN` 替换为两个不同的随机令牌，至少 16 字符。管理令牌用于页面，任务令牌用于外部验奖。已有 `.env` 直接沿用，不要重新生成令牌或覆盖文件。
+首次将 `.env.example` 复制为 `.env`，将 `JOB_TOKEN` 替换为至少 16 字符的随机令牌，用于外部验奖。页面及投注接口无需令牌。已有 `.env` 直接沿用任务令牌，不要重新生成或覆盖文件。
 
-宿主机无需安装 Node.js，可运行以下命令生成随机令牌，执行两次并分别填入 `.env`：
+宿主机无需安装 Node.js，可运行以下命令生成随机任务令牌并填入 `.env`：
 
 ```bash
 docker run --rm node:22-slim node -p "require('node:crypto').randomBytes(32).toString('hex')"
 ```
 
-Compose 仅从环境或 `.env` 读取两个令牌；`HOST=0.0.0.0`、`PORT=3000`、`DATABASE_PATH=/app/data/lottery.sqlite` 固定在容器配置中，不受本地开发 `.env` 中这三个字段影响。需要调整访问端口时修改 `ports` 左侧的 `3100`，保留容器端口 `3000`。不要使用会打印展开后令牌的 `docker compose config`，验证时加 `--quiet`。[Compose 环境变量说明](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation/)
+Compose 仅从环境或 `.env` 读取任务令牌；`HOST=0.0.0.0`、`PORT=3000`、`DATABASE_PATH=/app/data/lottery.sqlite` 固定在容器配置中，不受本地开发 `.env` 中这三个字段影响。需要调整访问端口时修改 `ports` 左侧的 `3100`，保留容器端口 `3000`。不要使用会打印展开后令牌的 `docker compose config`，验证时加 `--quiet`。[Compose 环境变量说明](https://docs.docker.com/compose/how-tos/environment-variables/variable-interpolation/)
 
 先检查 `wk` 网络：
 
@@ -39,7 +39,7 @@ docker compose ps
 docker compose logs -f --tail=100 z-lottery
 ```
 
-访问 `http://服务器地址:3100/`，在“投注记录”中填写 `API_TOKEN`。健康检查访问 `/api/health`，容器启动后可通过 `docker compose ps` 查看 `healthy` 状态。两个 Compose 文件合用时强制本地构建，不依赖 Docker Hub 上已经存在本项目镜像。
+访问 `http://服务器地址:3100/` 即可使用，投注记录自动加载，无需填写令牌。健康检查访问 `/api/health`，容器启动后可通过 `docker compose ps` 查看 `healthy` 状态。两个 Compose 文件合用时强制本地构建，不依赖 Docker Hub 上已经存在本项目镜像。
 
 ## 使用已发布镜像
 

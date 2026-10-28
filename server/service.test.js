@@ -95,3 +95,121 @@ test('跨期奖金合计超出安全精度时拒绝该次结果写入，保留�
   assert.equal(service.get(bet.id).knownWinAmount, 90000000000000);
   assert.equal(service.get(bet.id).winAmount, null);
 });
+
+const datedDraw = (issue, date) => ({ ...draw(issue), date });
+const dateInput = { game: 'dlt', tickets: input.tickets, placedAt: '2026-10-28T18:45:00+08:00', periods: 3 };
+
+test('按投注时间匹配真实连续3期开奖，未开奖期保留待匹配，重复任务不累计', async t => {
+  const repo = new Repository(':memory:'); t.after(() => repo.close());
+  let rows = [datedDraw('26122', '2026-10-26'), datedDraw('26123', '2026-10-28')];
+  const service = new BetService(repo, { getHistory: async () => rows }, { clock: () => new Date('2026-11-10T00:00:00Z') });
+  const bet = service.create(dateInput);
+  assert.equal(bet.status, 'pending');
+  assert.equal(bet.config.periods, 3);
+  assert.deepEqual(bet.issues, []);
+  assert.equal(bet.winAmount, null);
+  await service.check();
+  assert.deepEqual(service.get(bet.id).issues, ['26123']);
+  assert.equal(service.get(bet.id).status, 'partial');
+  rows = [datedDraw('26126', '2026-11-04'), datedDraw('26125', '2026-11-02'), datedDraw('26124', '2026-10-31'), ...rows];
+  await service.check();
+  assert.deepEqual(service.get(bet.id).issues, ['26123', '26124', '26125']);
+  assert.equal(service.get(bet.id).winAmount, 3000000);
+  assert.equal(service.get(bet.id).status, 'won');
+  await service.check();
+  assert.equal(service.get(bet.id).winAmount, 3000000);
+});
+
+test('截止后到开奖前投注跳过当天，跨年按实际列表匹配', async t => {
+  const repo = new Repository(':memory:'); t.after(() => repo.close());
+  const service = new BetService(repo, { getHistory: async () => [
+    datedDraw('26151', '2026-12-30'), datedDraw('27001', '2027-01-02'), datedDraw('27002', '2027-01-04'),
+  ] }, { clock: () => new Date('2027-01-10T00:00:00Z') });
+  const bet = service.create({ ...dateInput, placedAt: '2026-12-30T21:10:00+08:00', periods: 2 });
+  await service.check();
+  assert.deepEqual(service.get(bet.id).issues, ['27001', '27002']);
+  assert.equal(service.get(bet.id).status, 'won');
+});
+
+test('同彩种日期记录共享历史查询，待匹配记录参与分页，失败不污染数据', async t => {
+  const repo = new Repository(':memory:'); t.after(() => repo.close());
+  let requests = 0;
+  let failed = true;
+  const service = new BetService(repo, { getHistory: async () => { requests++; if (failed) throw new Error('history unavailable'); return []; } },
+    { clock: () => new Date('2026-11-10T00:00:00Z') });
+  service.create(dateInput); service.create(dateInput); service.create(dateInput);
+  const first = await service.check({ limit: 2 });
+  assert.ok(first.nextCursor);
+  assert.equal(requests, 1);
+  assert.equal(first.errors.length, 2);
+  assert.equal(service.list({ status: 'pending' }).total, 3);
+  failed = false;
+  const second = await service.check({ after: first.nextCursor, limit: 2 });
+  assert.equal(second.nextCursor, null);
+  assert.equal(second.waiting, 1);
+});
+
+test('日期记录重启后可继续验奖，等待历史请求时删除不会复活', async t => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'z-lottery-date-db-'));
+  let repo;
+  try {
+    repo = new Repository(path.join(dir, 'test.sqlite'));
+    let service = new BetService(repo, { getHistory: async () => [] }, { clock: () => new Date('2026-11-10T00:00:00Z') });
+    const bet = service.create(dateInput);
+    repo.close(); repo = new Repository(path.join(dir, 'test.sqlite'));
+    let release;
+    service = new BetService(repo, { getHistory: () => new Promise(resolve => { release = resolve; }) }, { clock: () => new Date('2026-11-10T00:00:00Z') });
+    assert.equal(service.get(bet.id).placedAt, '2026-10-28T10:45:00.000Z');
+    const pending = service.check();
+    await Promise.resolve();
+    service.remove(bet.id);
+    release([datedDraw('26123', '2026-10-28')]);
+    await pending;
+    assert.equal(service.list().total, 0);
+  } finally { repo?.close(); rmSync(dir, { recursive: true, force: true }); }
+});
+
+test('日期模式奖金未公布时保留首期，不用后面开奖替换，补全后幂等完成', async t => {
+  const repo = new Repository(':memory:'); t.after(() => repo.close());
+  let prizes = {};
+  const service = new BetService(repo, { getHistory: async () => [
+    { ...datedDraw('26123', '2026-10-28'), prizes }, datedDraw('26124', '2026-10-31'),
+  ] }, { clock: () => new Date('2026-11-10T00:00:00Z') });
+  const bet = service.create({ ...dateInput, periods: 1 });
+  await service.check();
+  assert.deepEqual(service.get(bet.id).issues, ['26123']);
+  assert.equal(service.get(bet.id).status, 'prize_pending');
+  assert.equal(service.get(bet.id).winAmount, null);
+  prizes = { 1: 1000000 };
+  await service.check();
+  assert.equal(service.get(bet.id).winAmount, 1000000);
+});
+
+test('日期模式结果写入失败时，实际期号绑定和中奖结果整体回滚', async t => {
+  const repo = new Repository(':memory:'); t.after(() => repo.close());
+  const rows = [['26123','2026-10-28'],['26124','2026-10-31'],['26125','2026-11-02'],['26126','2026-11-04']].map(([issue,date]) => datedDraw(issue,date));
+  const service = new BetService(repo, { getHistory: async () => rows }, { clock: () => new Date('2026-11-10T00:00:00Z') });
+  const bet = service.create({ ...dateInput, periods: 4, multiple: 30000000 });
+  const report = await service.check();
+  assert.equal(report.errors.length, 1);
+  assert.equal(service.get(bet.id).status, 'pending');
+  assert.deepEqual(service.get(bet.id).issues, []);
+  assert.equal(repo.db.prepare('SELECT COUNT(*) AS count FROM results').get().count, 0);
+});
+
+test('日期记录与兼容期号记录混合分页，不被尚未开奖的日期记录阻塞', async t => {
+  const repo = new Repository(':memory:'); t.after(() => repo.close());
+  const service = new BetService(repo, { getHistory: async () => [], getDraw: async (game, issue) => draw(issue) }, { clock: () => new Date('2026-11-10T00:00:00Z') });
+  service.create(dateInput);
+  const legacy = service.create(input);
+  let after;
+  let batches = 0;
+  do {
+    const result = await service.check({ limit: 1, ...(after ? { after } : {}) });
+    after = result.nextCursor;
+    batches++;
+    assert.ok(batches <= 3);
+  } while (after);
+  assert.equal(batches, 3);
+  assert.equal(service.get(legacy.id).status, 'won');
+});

@@ -5,7 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <meta name="theme-color" content="#173f35">
   <meta name="description" content="大乐透与双色球随机选号，支持复式、共享号码、倍数和连续期数。">
-  <title>z-lottery · 随机选号</title>
+  <title>z-lottery · 投注记录</title>
   <link rel="icon" type="image/svg+xml" href="./favicon.svg">
   <link rel="stylesheet" href="./styles.css">
   <script defer src="./lottery-core.js"></script>
@@ -16,8 +16,9 @@
   <div class="shell">
     <header class="topbar"><a class="brand" href="./"><span class="brand-icon" aria-hidden="true">z.</span> z-lottery</a><span class="top-note"><i></i> 每一次，都是新的可能</span></header>
     <main>
-      <section class="intro"><div class="eyebrow">RANDOM NUMBER STUDIO</div><h1>把选择，交给随机。</h1><p>设定你的投注方式，生成一组属于今天的号码。</p></section>
-      <div class="workspace">
+      <dialog id="new-bet-dialog" class="new-bet-dialog" aria-labelledby="new-bet-title" aria-describedby="new-bet-description">
+        <div class="dialog-heading"><div><h2 id="new-bet-title">新增投注</h2><p id="new-bet-description">设定投注方式，生成号码后保存。关闭弹窗会保留本次未保存内容。</p></div><button id="close-new-bet" class="outline-button" type="button" aria-label="关闭新增投注弹窗" autofocus>关闭</button></div>
+        <div class="workspace">
         <section class="panel settings" aria-labelledby="settings-title">
           <div class="section-heading"><h2 id="settings-title">新增投注 · 随机选号</h2><span class="step">01 / CONFIGURE</span></div>
           <form id="settings-form" novalidate>
@@ -54,16 +55,11 @@
           <div id="status" class="status" role="status" aria-live="polite">点击「生成号码」开始选号。</div>
         </section>
       </div>
+      </dialog>
       <section class="bet-records" aria-labelledby="records-title">
-        <div class="section-heading"><div><span class="eyebrow">BETTING JOURNAL</span><h2 id="records-title">投注记录</h2></div><span class="step">02 / KEEP TRACK</span></div>
+        <div class="section-heading"><div><span class="eyebrow">BETTING JOURNAL</span><h2 id="records-title">投注记录</h2></div><button id="new-bet-button" class="primary-button new-bet-button" type="button">＋ 新增投注</button></div>
         <p class="records-intro">保存投注时间与连续期数，按后续实际开奖记录逐期验奖。</p>
-        <div class="check-job-link">
-          <label for="check-job-url">外部定时验奖链接</label>
-          <div class="check-job-controls"><input id="check-job-url" type="text" readonly><button id="copy-check-job-url" class="outline-button" type="button">复制验奖链接</button></div>
-          <p class="records-help">调度器需发送 POST 请求，Content-Type 为 application/json，请求体为 {}；按返回的 nextCursor 继续请求，直到为 null。直接打开链接不会触发验奖。</p>
-          <p id="check-job-status" class="records-status" role="status" aria-live="polite"></p>
-        </div>
-        <div class="record-toolbar"><a href="#settings-title" class="outline-button">新增投注</a><button id="connect-button" class="outline-button" type="button">刷新列表</button></div>
+        <div class="record-toolbar"><button id="connect-button" class="outline-button" type="button">刷新列表</button></div>
           <div class="record-list-area">
             <div class="record-filters"><label for="filter-game" class="sr-only">按彩种筛选</label><select id="filter-game"><option value="">所有彩种</option><option value="dlt">超级大乐透</option><option value="ssq">双色球</option></select><label for="filter-status" class="sr-only">按验奖状态筛选</label><select id="filter-status"><option value="">所有状态</option><option value="pending">待开奖</option><option value="partial">部分已开奖</option><option value="prize_pending">奖金待补全</option><option value="won">已中奖</option><option value="lost">未中奖</option></select><span id="record-count"></span></div>
             <div id="bet-list" class="bet-list"><p class="empty-records">正在加载投注记录…</p></div>
@@ -71,6 +67,12 @@
           </div>
         <p id="records-status" class="records-status" role="status" aria-live="polite"></p>
         <p class="records-help">验奖展示基础税前奖金，不含特别派奖；实际兑奖以官方公告和实体彩票为准。</p>
+        <details class="check-job-link"><summary>外部定时验奖</summary>
+          <label for="check-job-url">外部定时验奖链接</label>
+          <div class="check-job-controls"><input id="check-job-url" type="text" readonly><button id="copy-check-job-url" class="outline-button" type="button">复制验奖链接</button></div>
+          <p class="records-help">调度器需发送 POST 请求，Content-Type 为 application/json，请求体为 {}；按返回的 nextCursor 继续请求，直到为 null。直接打开链接不会触发验奖。</p>
+          <p id="check-job-status" class="records-status" role="status" aria-live="polite"></p>
+        </details>
       </section>
     </main>
     <footer><span>z-lottery <span class="footer-divider">/</span> 留一点期待给生活</span><span>仅供随机选号与金额计算，不提供预测或购买服务。</span></footer>

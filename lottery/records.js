@@ -51,6 +51,19 @@
   let saving = false;
   let deleting = false;
   let requestGeneration = 0;
+  const newBetDialog = document.querySelector('#new-bet-dialog');
+  document.querySelector('#new-bet-button').addEventListener('click', () => {
+    if (!newBetDialog.open) newBetDialog.showModal();
+  });
+  document.querySelector('#close-new-bet').addEventListener('click', () => {
+    if (!saving) newBetDialog.close();
+  });
+  newBetDialog.addEventListener('cancel', event => {
+    if (saving) event.preventDefault();
+  });
+  newBetDialog.addEventListener('close', () => {
+    document.querySelector('#new-bet-button').focus();
+  });
 
   function message(text, isError = false) { status.textContent = text; status.classList.toggle('is-error', isError); }
   function element(tag, text, className) {
@@ -218,6 +231,7 @@
     const placedValue = placedInput.value;
     const note = document.querySelector('#bet-note').value;
     saving = true;
+    document.querySelector('#close-new-bet').disabled = true;
     updateSaveButton();
     let saved;
     try {
@@ -227,6 +241,7 @@
         ...(placedValue ? { placedAt: placedValue + (placedValue.length === 16 ? ':00' : '') + '+08:00' } : {}),
       }) });
       savedGeneration = selectedGeneration;
+      newBetDialog.close();
       if (generation === selectedGeneration && document.querySelector('#bet-note').value === note) document.querySelector('#bet-note').value = '';
       document.querySelector('#filter-game').value = '';
       document.querySelector('#filter-status').value = '';
@@ -237,9 +252,10 @@
       if (generation === selectedGeneration) saveMessage(text);
     } catch (error) {
       const text = (saved ? `投注 #${saved.id} 已保存，列表刷新失败：` : '') + error.message;
-      if (generation === selectedGeneration) saveMessage(text, true);
+      if (saved) message(text, true);
+      else if (generation === selectedGeneration) saveMessage(text, true);
       else message(text, true);
-    } finally { saving = false; updateSaveButton(); }
+    } finally { saving = false; document.querySelector('#close-new-bet').disabled = false; updateSaveButton(); }
   });
   refresh();
 })();

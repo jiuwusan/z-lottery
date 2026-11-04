@@ -57,6 +57,12 @@
       <section class="bet-records" aria-labelledby="records-title">
         <div class="section-heading"><div><span class="eyebrow">BETTING JOURNAL</span><h2 id="records-title">投注记录</h2></div><span class="step">02 / KEEP TRACK</span></div>
         <p class="records-intro">保存投注时间与连续期数，按后续实际开奖记录逐期验奖。</p>
+        <div class="check-job-link">
+          <label for="check-job-url">外部定时验奖链接</label>
+          <div class="check-job-controls"><input id="check-job-url" type="text" readonly><button id="copy-check-job-url" class="outline-button" type="button">复制验奖链接</button></div>
+          <p class="records-help">调度器需发送 POST 请求，Content-Type 为 application/json，请求体为 {}；按返回的 nextCursor 继续请求，直到为 null。直接打开链接不会触发验奖。</p>
+          <p id="check-job-status" class="records-status" role="status" aria-live="polite"></p>
+        </div>
         <div class="record-toolbar"><a href="#settings-title" class="outline-button">新增投注</a><button id="connect-button" class="outline-button" type="button">刷新列表</button></div>
           <div class="record-list-area">
             <div class="record-filters"><label for="filter-game" class="sr-only">按彩种筛选</label><select id="filter-game"><option value="">所有彩种</option><option value="dlt">超级大乐透</option><option value="ssq">双色球</option></select><label for="filter-status" class="sr-only">按验奖状态筛选</label><select id="filter-status"><option value="">所有状态</option><option value="pending">待开奖</option><option value="partial">部分已开奖</option><option value="prize_pending">奖金待补全</option><option value="won">已中奖</option><option value="lost">未中奖</option></select><span id="record-count"></span></div>

@@ -1,5 +1,7 @@
 # Go Service Implementation Plan
 
+> 历史记录：当前 CLI、服务和测试已统一迁移到 Go；下文旧运行时和命令只记录当时方案，不适用于当前版本。现行命令见根目录 README。
+
 > **For agentic workers:** Use parallel agents for independent domain/provider tasks; root integrates repository, HTTP, scheduler and deployment. Work on current branch, without commits or pushes.
 
 **Goal:** Go 后端兼容旧数据，内部调度按彩种与窗口同步官方完整开奖，再从持久缓存进行本地验奖。

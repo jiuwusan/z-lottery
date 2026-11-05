@@ -2,7 +2,7 @@
 
 ## 运行
 
-推荐使用 [Docker Compose 部署](../docs/docker-compose.md)。服务使用 Go 1.27.3+、内嵌页面和时区数据，以及纯 Go 的 modernc SQLite 驱动；生产运行不需要 Node.js 或 CGO。
+推荐使用 [Docker Compose 部署](../docs/docker-compose.md)。服务使用 Go 1.27.3+、内嵌页面和时区数据，以及纯 Go 的 modernc SQLite 驱动；生产运行无需 CGO。
 
 在项目根目录运行：
 
@@ -13,7 +13,7 @@ go build -o z-lottery ./cmd/z-lottery
 ./z-lottery
 ```
 
-访问 `http://127.0.0.1:3000/`。安装 Node.js 时 `npm start` 也会执行 Go 入口；原有选号 CLI 保持独立。
+访问 `http://127.0.0.1:3000/`。独立选号 CLI 使用 `go run ./cmd/lottery`，参数见根目录 README。
 
 服务从工作目录自动加载 `.env`，已有环境变量优先；可复制 `.env.example` 修改。`HOST` 默认 `127.0.0.1`，`PORT` 默认 `3000`，`DATABASE_PATH` 默认 `./data/lottery.sqlite`，相对路径以进程工作目录为准。
 
@@ -128,7 +128,7 @@ WantedBy=multi-user.target
 
 - [大乐透现行规则](https://m.lottery.gov.cn/ksjz/m/yxgz_dlt/)、[19019 期起规则公告](https://sport.jining.gov.cn/art/2019/5/31/art_3807_1508029.html) 与 [官方计算器及 26014 期规则切换说明](https://m.lottery.gov.cn/mltsz/jsq/index.html)。19019～26013 期使用九奖级，26014 期起使用七奖级。
 - [双色球游戏规则（湖南省民政厅发布）](https://mzt.hunan.gov.cn/mzt/fc/xwzxfc/tzggfc/202601/33894962/files/9b6723ae4d8743099b90d5edfe7d39ea.pdf)。
-- 官方数据源沿用项目原有两个抓取脚本指向的福彩与体彩接口，日期模式完整分页读取历史开奖及奖金；兼容模式查询明确期号。大乐透销售截止规则见 [体彩官方时间调整公告](https://m.lottery.gov.cn/xxgk/tzggz/20221220/10027143.html)。
+- 官方数据源使用福彩与体彩接口，适配实现见 `internal/lottery/provider.go`，日期模式完整分页读取历史开奖及奖金；兼容模式查询明确期号。大乐透销售截止规则见 [体彩官方时间调整公告](https://m.lottery.gov.cn/xxgk/tzggz/20221220/10027143.html)。
 
 复式用命中与未命中号码的组合数统计各单式奖级，避免展开大量组合；每个单式只计最高奖级，但一组复式可以同时中多个奖级。倍数放大中奖注数；大乐透追加只参与一、二等奖，读取官方追加单注金额，不按浮点数乘 0.8 猜测取整。奖金使用分为单位检查安全精度。
 
@@ -139,9 +139,8 @@ WantedBy=multi-user.target
 ```bash
 go test ./...
 go vet ./...
-npm test
 ```
 
 Linux CI 还运行 `go test -race ./...`，需启用 CGO 和 C 编译器。生产镜像仍以 `CGO_ENABLED=0` 构建。
 
-包括原 CLI/浏览器核心测试，以及服务端参数校验、复式奖级统计、规则切换、SQLite 重启/删除/分页、逐期幂等验奖、上游异常及 HTTP 请求限制、旧任务路径 404 和内置调度测试。测试使用隔离临时数据库与受控开奖数据，不依赖实时网络。
+包括 Go CLI 和由纯 Go goja 引擎执行的浏览器核心测试，以及服务端参数校验、复式奖级统计、规则切换、SQLite 重启/删除/分页、逐期幂等验奖、上游异常及 HTTP 请求限制、旧任务路径 404 和内置调度测试。测试使用隔离临时数据库与受控开奖数据，不依赖实时网络。

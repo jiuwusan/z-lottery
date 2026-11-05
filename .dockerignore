@@ -1,6 +1,5 @@
 .git
 .github
-**/node_modules
 data
 **/data
 .env
@@ -13,8 +12,6 @@ data
 **/*.sqlite
 **/*.sqlite-wal
 **/*.sqlite-shm
-*.test.js
-**/*.test.js
 docs
 README.md
 server/README.md
@@ -27,4 +24,6 @@ lottery/README.md
 **/*_test.go
 /z-lottery
 /z-lottery.exe
+/lottery-cli
+/lottery-cli.exe
 coverage.out

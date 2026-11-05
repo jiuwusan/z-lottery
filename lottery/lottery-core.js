@@ -5,7 +5,7 @@
     ssq: { name: '双色球', frontLabel: '红球', backLabel: '蓝球', frontMax: 33, backMax: 16, frontPick: 6, backPick: 1, defaultFront: 7, defaultBack: 2, supportsAppend: false },
   };
 
-  // Rejection sampling keeps each outcome equally likely, as crypto.randomInt does in the CLI.
+  // Rejection sampling keeps each outcome equally likely, as crypto/rand does in the Go CLI.
   function randomInt(max) {
     const limit = Math.floor(4294967296 / max) * max;
     const buffer = new Uint32Array(1);
@@ -80,6 +80,5 @@
   }
 
   const api = { GAMES, calculate, generate };
-  if (typeof module !== 'undefined' && module.exports) module.exports = api;
-  else root.Lottery = api;
+  root.Lottery = api;
 })(globalThis);

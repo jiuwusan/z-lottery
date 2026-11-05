@@ -23,3 +23,8 @@ lottery/README.md
 **/*.log
 .worktrees
 .superpowers
+
+**/*_test.go
+/z-lottery
+/z-lottery.exe
+coverage.out

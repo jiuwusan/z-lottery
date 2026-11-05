@@ -1,4 +1,4 @@
-# 彩票随机选号脚本
+# 彩票选号与自动验奖
 
 `lottery.js` 是一个无需安装第三方依赖的命令行随机选号脚本，支持超级大乐透和双色球，可配置复式数量、多组投注、投注倍数、连续投注期数，以及多组之间共享的号码数量。
 
@@ -178,11 +178,11 @@ node lottery.js --game ssq --front 8 --back 3 --count 4 --same 4,1 --multiple 2 
 
 ## 投注记录与自动验奖服务
 
-新增 Node.js 服务层与 SQLite 数据持久层。页面使用随机选号表单新增投注，保存投注时间和连续期数；验奖时根据实际销售截止时间匹配后续连续开奖记录，不提前预测期号。支持投注列表、删除及逐期验奖详情，外部定时任务可直接调用验奖 API，无需令牌。
+Go 服务内嵌浏览器页面，使用纯 Go SQLite 驱动持久保存投注。页面支持新增、列表、删除及逐期验奖详情；按实际投注时间和销售截止时刻匹配连续开奖，不预测期号。API 和既有 SQLite 数据格式保持兼容。
 
-后端需要 Node.js 22.13+。直接运行 `npm start`，访问 `http://127.0.0.1:3000/` 即可使用；自定义端口或数据库路径时可复制 `.env.example` 为 `.env` 修改。生产部署需同时运行 Node.js 并让 Nginx 转发 `/api/`，原有离线选号仍可独立使用。
+服务开发需要 Go 1.27.3+，运行 `go run ./cmd/z-lottery`，访问 `http://127.0.0.1:3000/`；安装 Node.js 后也可用 `npm start` 兼容入口。复制 `.env.example` 为 `.env` 可配置地址、端口、数据库和调度；已有环境变量优先。生产运行单个 Go 二进制，内嵌页面与时区数据，不需要 Node.js；原有选号 CLI 继续使用 Node.js。
 
-接口、数据结构、部署、外部 cron 调用及验奖范围见 [服务说明](server/README.md)。
+启用自动验奖时，服务启动立即补查，此后默认按北京时间每天 22:00、22:20、22:40、23:00、23:20、23:40 及次日 00:00 自动验奖。按彩种发现官方列表已发布的最新开奖，审核通过且所有官方奖级金额完整后，停止该彩种在本窗口的上游轮询；完成状态持久保存，重启仍有效，下一窗口重新发现开奖。投注从本地开奖缓存匹配和验奖，未来尚未公布的期数不会延长已完成窗口的 HTTP 轮询。即使没有投注，也会同步官方开奖。以官方列表为准，最新一期日期早于窗口时也可完成同步，非开奖日无需等待当日记录。`CHECK_ENABLED`、`CHECK_SCHEDULE`、`CHECK_TIMEZONE` 可调整，见 [服务说明](server/README.md)。旧 HTTP 验奖任务接口已移除，升级时停用外部 cron 和调度平台任务。
 
 ## Docker Compose 部署
 
@@ -192,10 +192,14 @@ node lottery.js --game ssq --front 8 --back 3 --count 4 --same 4,1 --multiple 2 
 docker compose -f docker-compose.yml -f docker-compose.build.yml up -d --build
 ```
 
-需先确认 `wk` 网络存在。镜像发布、部署更新、外部定时验奖、Nginx 和数据库迁移见 [Docker Compose 部署说明](docs/docker-compose.md)。
+需先确认 `wk` 网络存在。镜像发布、部署更新、内置定时验奖、Nginx 和数据库备份见 [Docker Compose 部署说明](docs/docker-compose.md)。
 
 ## 运行测试
 
 ```bash
+go test ./...
+go vet ./...
 npm test
 ```
+
+Linux CI 还运行 `go test -race ./...`，需要启用 CGO 和 C 编译器；生产镜像使用 `CGO_ENABLED=0`。`npm test` 仅验证保留的 CLI 与浏览器逻辑。

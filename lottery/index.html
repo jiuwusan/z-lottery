@@ -67,12 +67,7 @@
           </div>
         <p id="records-status" class="records-status" role="status" aria-live="polite"></p>
         <p class="records-help">验奖展示基础税前奖金，不含特别派奖；实际兑奖以官方公告和实体彩票为准。</p>
-        <details class="check-job-link"><summary>外部定时验奖</summary>
-          <label for="check-job-url">外部定时验奖链接</label>
-          <div class="check-job-controls"><input id="check-job-url" type="text" readonly><button id="copy-check-job-url" class="outline-button" type="button">复制验奖链接</button></div>
-          <p class="records-help">调度器需发送 POST 请求，Content-Type 为 application/json，请求体为 {}；按返回的 nextCursor 继续请求，直到为 null。直接打开链接不会触发验奖。</p>
-          <p id="check-job-status" class="records-status" role="status" aria-live="polite"></p>
-        </details>
+        <p class="records-help">自动验奖：默认北京时间每天 22:00 至次日 00:00，每 20 分钟同步官方开奖。官方列表中的开奖记录审核通过且各奖级金额完整后，停止该彩种当晚的后续查询；投注按本地开奖记录验奖，未来期数不会触发重复查询。</p>
       </section>
     </main>
     <footer><span>z-lottery <span class="footer-divider">/</span> 留一点期待给生活</span><span>仅供随机选号与金额计算，不提供预测或购买服务。</span></footer>

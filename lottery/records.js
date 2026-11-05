@@ -4,38 +4,6 @@
   const status = document.querySelector('#records-status');
   const saveButton = document.querySelector('#save-bet');
   const refreshButton = document.querySelector('#connect-button');
-  const jobUrlInput = document.querySelector('#check-job-url');
-  const copyJobButton = document.querySelector('#copy-check-job-url');
-  const jobStatus = document.querySelector('#check-job-status');
-  if (['http:', 'https:'].includes(window.location.protocol)) {
-    jobUrlInput.value = new URL('/api/jobs/check', window.location.href).href;
-  } else {
-    copyJobButton.disabled = true;
-    jobStatus.textContent = '请通过已部署的服务页面获取验奖链接。';
-  }
-  copyJobButton.addEventListener('click', async () => {
-    if (!jobUrlInput.value || copyJobButton.disabled) return;
-    copyJobButton.disabled = true;
-    jobStatus.classList.remove('is-error');
-    try {
-      if (window.isSecureContext && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(jobUrlInput.value);
-      } else {
-        const previousFocus = document.activeElement;
-        jobUrlInput.select();
-        let copied;
-        try { copied = document.execCommand('copy'); }
-        finally { previousFocus?.focus(); }
-        if (!copied) throw new Error('copy failed');
-      }
-      jobStatus.textContent = '验奖链接已复制，请在调度器中配置 POST 请求。';
-    } catch (_) {
-      jobUrlInput.focus();
-      jobUrlInput.select();
-      jobStatus.textContent = '浏览器未允许复制，请手动复制已选中的链接。';
-      jobStatus.classList.add('is-error');
-    } finally { copyJobButton.disabled = false; }
-  });
   const states = { pending: '待开奖', partial: '部分已开奖', prize_pending: '奖金待补全', won: '已中奖', lost: '未中奖' };
   const money = new Intl.NumberFormat('zh-CN', { maximumFractionDigits: 2 });
   const time = new Intl.DateTimeFormat('zh-CN', { timeZone: 'Asia/Shanghai', dateStyle: 'medium', timeStyle: 'short', hour12: false });

@@ -2,28 +2,22 @@
 
 ## 运行
 
-推荐容器部署时参照 [Docker Compose 部署说明](../docs/docker-compose.md)，宿主机无需 Node.js，SQLite 使用持久卷。以下为直接运行 Node.js 的方式。
+推荐使用 [Docker Compose 部署](../docs/docker-compose.md)。服务使用 Go 1.27.3+、内嵌页面和时区数据，以及纯 Go 的 modernc SQLite 驱动；生产运行不需要 Node.js 或 CGO。
 
-后端要求 **Node.js 22.13+**，使用内置 `node:http`、`node:sqlite` 和 `fetch`，无需安装第三方依赖。Node.js 22 的 SQLite 会输出 ExperimentalWarning，这是运行时提示。原有 CLI 和离线随机选号仍可使用 Node.js 18+。
+在项目根目录运行：
 
-在项目根目录运行 `npm start`，打开 `http://127.0.0.1:3000/`。无需安装依赖或配置令牌，投注记录自动加载，可直接新增、删除和调用验奖。需要自定义端口或数据库路径时，将 `.env.example` 复制为 `.env` 后修改。
+```bash
+go run ./cmd/z-lottery
+# 或编译后运行
+go build -o z-lottery ./cmd/z-lottery
+./z-lottery
+```
 
-配置：`HOST` 默认 `127.0.0.1`；`PORT` 默认 `3000`；`DATABASE_PATH` 默认项目内 `data/lottery.sqlite`。相对数据库路径以进程工作目录为准。`.env` 和数据库文件已忽略，不应提交。
+访问 `http://127.0.0.1:3000/`。安装 Node.js 时 `npm start` 也会执行 Go 入口；原有选号 CLI 保持独立。
 
-当前为**共享记录**，页面和所有接口均可直接访问，访问者管理同一批投注，验奖任务也不需要令牌。
+服务从工作目录自动加载 `.env`，已有环境变量优先；可复制 `.env.example` 修改。`HOST` 默认 `127.0.0.1`，`PORT` 默认 `3000`，`DATABASE_PATH` 默认 `./data/lottery.sqlite`，相对路径以进程工作目录为准。
 
-## 分层
-
-- `app.js`：HTTP 路由、请求限制、错误响应、静态文件白名单。
-- `service.js`：投注用例、逐期验奖、批次游标、任务互斥。
-- `domain.js`：投注验证、金额重算、复式组合计数及奖级规则。
-- `repository.js`：SQLite 表、事务、分页、开奖缓存和验奖结果。
-- `draw-provider.js`：官方历史列表分页、覆盖范围和连续性校验；兼容旧记录按期号查询。
-- `draw-matching.js`：投注时间校验、北京时间和实际销售截止时间匹配。
-- `index.js`：环境配置、启动和关闭。
-- `check-job.js`：供外部定时任务使用的 HTTP 客户端，自动遍历全部批次。
-
-SQLite 启用外键、WAL 和 5 秒 busy timeout。新投注先保存时间、号码和期数；验奖时在事务中绑定实际期号并保存结果。删除投注级联删除其期号与验奖结果。结果按“投注 ID + 期号”唯一保存，重复任务不会累加奖金。开奖号码单独缓存用于审阅，删除投注不清理公共开奖缓存。建议每个数据库运行一个服务进程，不使用多个副本共享网络文件系统数据库。旧数据库自动增加匹配模式和投注时间字段，保留旧记录及其期号/结果，不按不确定的历史登记时间重算。
+当前为共享记录，所有页面和 API 均无需令牌，访问者管理同一批投注。SQLite 使用外键、WAL 和 busy timeout；每个数据库运行一个服务进程。删除投注级联清理其结果，重复验奖不会累加奖金。Go 服务兼容既有投注表和响应格式，自动增加官方同步状态等所需表，无需手动转换数据库。
 
 ## API
 
@@ -36,7 +30,6 @@ SQLite 启用外键、WAL 和 5 秒 busy timeout。新投注先保存时间、�
 | `GET /api/bets/:id` | 无 | 投注详情，含各期开奖号码与逐组中奖结果 |
 | `POST /api/bets` | 无 | 新增投注，成功返回 201 与已保存记录 |
 | `DELETE /api/bets/:id` | 无 | 删除，成功返回 204，不存在返回 404 |
-| `POST /api/jobs/check` | 无 | 查询官方开奖并验奖 |
 
 新增请求示例：
 
@@ -62,7 +55,7 @@ SQLite 启用外键、WAL 和 5 秒 busy timeout。新投注先保存时间、�
 
 匹配步骤：
 
-1. 从官方历史接口分页读取，直到覆盖投注日期；每页 100 条，上限 50 页。同批同彩种共用历史请求。
+1. 上游同步独立于投注，先将官方开奖缓存到 SQLite，本地再按投注时间匹配。新投注或旧记录需要更早历史时，可以按需回填覆盖范围；每页 100 条，上限 50 页，成功覆盖的范围持久保存，后续轮次复用缓存。历史回填不是当前窗口持续轮询的停止条件。
 2. 将完整记录按实际开奖日期升序排列，保留投注日期之前最近一期作为连续性校验锚点，检测缺页、漏期和未审核的中间记录。不能完整覆盖投注日期或存在缺口时，报错等待重试，不能拿较晚的开奖补位。
 3. 比较投注时间与每期销售截止时间，严格满足 `placedAt < salesCloseAt` 才可参与。大乐透优先采用官方 `lotterySaleEndtime`，未提供时按当期规则补齐：23001 期起 21:00，此前 20:00；双色球按北京时间 20:00。不能直接比较只有年月日的开奖字段，也不能用直播开奖时刻代替销售截止时刻。
 4. 取最早 N 次合格的真实开奖。已开奖不足 N 次时只保存已有结果，余下位置保持待匹配；后续任务继续补齐。休市、临时调整和跨年随实际历史记录，不维护预测休市日历，也不做期号加一。
@@ -80,84 +73,45 @@ SQLite 启用外键、WAL 和 5 秒 busy timeout。新投注先保存时间、�
 
 状态：`pending` 未验出任何一期；`partial` 部分期已开奖；`prize_pending` 所有期均已出号码但有中奖奖金待补全；`won/lost` 所有期验奖及奖金已完整。`winAmount=null` 表示尚未全部完成，不是未中奖；`knownWinAmount` 为已经能够确认的部分奖金。单期缺失任一中奖奖级的奖金时，其 `amount=null`，完整奖级计入 `knownAmount`。
 
-## 外部定时任务
+## 内置定时验奖
 
-服务不会自行启动定时器。任务接口请求体可为 `{}`，也可指定：
+`CHECK_ENABLED` 默认 `true`。启用时启动立即补查一次，再按计划执行；设置 `false` 会禁用启动补查和后续计划。
 
-```bash
-curl -X POST http://127.0.0.1:3000/api/jobs/check -H 'Content-Type: application/json' -d '{}'
-```
+`CHECK_SCHEDULE` 默认 `*/20 22-23 * * *;0 0 * * *`，采用五字段 cron，多条表达式用分号分隔；`CHECK_TIMEZONE` 默认 `Asia/Shanghai`。默认每天检查 22:00、22:20、22:40、23:00、23:20、23:40 和次日 00:00，包含午夜边界，不包含 00:20。检查时间采用配置的 IANA 时区，不依赖宿主机本地时区。
 
-```json
-{ "game": "dlt", "limit": 20, "after": "dlt:26119" }
-```
+上游开奖同步与本地投注验奖分开执行。同步按彩种独立进行，即使没有投注也发现官方已发布的最新开奖；默认窗口为当日 22:00 至次日 00:00，00:00 属于前一天窗口。只有最新官方开奖已审核通过（`Ready`），且官方全部奖级金额完整（`OfficialAmountsComplete`）时，才停止该彩种在这个窗口的后续上游轮询。双色球要求一至六等奖；大乐透现行规则要求一至七等奖，历史九奖级规则要求一至九等奖，并要求一、二等奖追加奖金。不能仅根据本次投注命中奖级、未中奖 0 元或投注的 `winAmount` 判断上游同步完成。官方首页列表中其他已公布期次也会纳入完整性校验，不会因为最新一期完整而忽略其他期次的缺失奖金。
 
-`game` 可省略；`limit` 默认 20，上限 100。日期模式按投注记录计数，兼容期号模式按不同“彩种+期号”计数。`after` 为上个响应的 `nextCursor`，首次省略，必须原样传回；日期模式游标为 `bet:<补齐16位的ID>`，兼容模式继续使用 `dlt:<期号>` 或 `ssq:<期号>`。
+官方列表没有最新记录、最新记录未审核、缺少任一官方奖级或请求失败时，在窗口后续时刻继续同步。官方列表是唯一依据：最新记录日期可以早于窗口日期，非开奖日无需等待当日开奖。不预推今日或下一期期号，不硬编码开奖日历。同步状态按“彩种 + 窗口”写入 `draw_sync` 表，启动补查可复用同窗口已完成状态并跳过网络；进入下一窗口重新发现官方开奖。
 
-响应示例：
+本地验奖复用持久化的开奖缓存与历史覆盖范围，补齐已有实际开奖。连续投注未来尚未公布的期数保持待匹配，不会迫使已经同步完成的窗口继续发起 HTTP 请求。新建回溯投注或旧明确期号记录如缺少历史覆盖，可触发一次必要的历史回填；成功覆盖范围持久保存，后续检查与重启不重复抓取同一范围。历史回填与最新开奖的窗口完成状态分别管理。任务避免重叠，一个彩种或一条投注失败不阻止其他处理，详情可查看服务日志。
 
-```json
-{ "checked": 2, "waiting": 1, "updatedBets": 4, "errors": [], "nextCursor": null }
-```
-
-必须继续调用直到 `nextCursor=null`。每轮新任务从空游标开始，未匹配、奖金未补全和失败记录会再次检查，完成记录自动跳过。`checked` 为本批计算的期次数，重试可能包含先前已算过的期次，不代表新增结果；日期任务的 `updatedBets` 按更新的投注条数计，兼容任务按投注期记录数计。请求幂等；并发任务返回 409。任一上游失败返回 **502**，响应包含成功数量、错误和下一游标；日期任务错误带 `betId`，兼容任务错误带 `issue`。成功部分保留，失败投注不改变原状态。
-
-提供的任务客户端会遍历分页、输出批次摘要，并在任何批次出错时以非零状态退出：
-
-```bash
-node --env-file-if-exists=.env server/check-job.js
-```
-
-默认调用 `http://127.0.0.1:3000/api/jobs/check`（端口遵循 `PORT`），远程调度时只需配置 `JOB_URL=https://lottery.example.com/api/jobs/check`，该客户端本身不需要数据库文件或令牌。
-
-Linux cron 示例，确保使用服务器实际的 node 路径与工作目录，按服务器时区每天 21～23 点每 20 分钟检查：
-
-```cron
-*/20 21-23 * * * cd /opt/z-lottery && /usr/bin/node --env-file-if-exists=.env server/check-job.js >> /var/log/z-lottery-check.log 2>&1
-```
-
-也可以由现有调度平台直接发送 JSON POST，无需认证请求头。建议调度平台在非 2xx 或网络失败时重试；同一任务客户端不应重叠运行。官方数据可能稍晚更新，因此建议多次执行，而不是只在开奖时间调用一次。
+`/api/jobs/check` 已移除并返回 404；旧 HTTP 任务客户端和页面复制验奖链接均已删除。升级前停用宿主机 cron、容器定时任务和调度平台中已有的外部调用，服务内部直接执行检查。
 
 ## Nginx 与进程托管
 
-生产环境需要运行 Node.js 后端，不再只是复制 HTML。静态文件仍可复制 `lottery/` 到 `/var/www/z-lottery/`，服务代码放 `/opt/z-lottery/`，数据库放不可被 Nginx 静态访问的位置。
+Go 服务同时提供页面和 API，反向代理整个站点即可：
 
 ```nginx
-server {
-    listen 80;
-    server_name lottery.example.com;
-    root /var/www/z-lottery;
-    index index.html;
-    charset utf-8;
-
-    location /api/ {
-        proxy_pass http://127.0.0.1:3000;
-        proxy_set_header Host $host;
-        proxy_read_timeout 600s;
-        client_max_body_size 512k;
-    }
-
-    location / {
-        try_files $uri $uri/ =404;
-    }
+location / {
+    proxy_pass http://127.0.0.1:3000;
+    proxy_set_header Host $host;
+    proxy_read_timeout 600s;
+    client_max_body_size 512k;
 }
 ```
 
-`proxy_pass` 末尾不加 `/`，保留 `/api/` 路径。若页面部署于 `/lottery/` 子路径，API 仍转发根路径 `/api/`。确保主配置加载 `mime.types`。配置自己的 TLS 证书后使用 HTTPS。
-
-可用 systemd 运行后端，以下示例假定已创建有权读写数据库的 `zlottery` 系统用户：
+配置自己的 TLS 证书。可用 systemd 托管编译好的二进制，以下示例假定已创建有权读写数据库的 `zlottery` 用户：
 
 ```ini
 [Unit]
-Description=z-lottery API
+Description=z-lottery
 After=network.target
 
 [Service]
 Type=simple
 User=zlottery
 WorkingDirectory=/opt/z-lottery
-EnvironmentFile=-/opt/z-lottery/.env
-ExecStart=/usr/bin/node /opt/z-lottery/server/index.js
+ExecStart=/opt/z-lottery/z-lottery
 Restart=on-failure
 RestartSec=5
 TimeoutStopSec=15
@@ -165,6 +119,8 @@ TimeoutStopSec=15
 [Install]
 WantedBy=multi-user.target
 ```
+
+二进制读取工作目录下的 `.env`。可运行 `./z-lottery healthcheck` 验证 `HOST` / `PORT` 对应的健康接口。
 
 环境文件仅允许运行账户读取。数据库备份建议停止服务后复制 SQLite 文件，或使用 SQLite `.backup`/在线备份功能；WAL 模式不能在写入中仅复制主文件。恢复时停止服务并恢复备份，再启动服务。
 
@@ -176,12 +132,16 @@ WantedBy=multi-user.target
 
 复式用命中与未命中号码的组合数统计各单式奖级，避免展开大量组合；每个单式只计最高奖级，但一组复式可以同时中多个奖级。倍数放大中奖注数；大乐透追加只参与一、二等奖，读取官方追加单注金额，不按浮点数乘 0.8 猜测取整。奖金使用分为单位检查安全精度。
 
-展示普通规则下的**税前基础奖金及追加奖金**，不计算特别派奖、活动资格、兑奖税费。缺失奖金不会用固定金额猜测，后续任务继续补全；完成后不会自动重新抓取已经验完的期号。实际兑奖须以官方当期公告及实体彩票为准。
+展示普通规则下的**税前基础奖金及追加奖金**，不计算特别派奖、活动资格、兑奖税费。缺失奖金不会用固定金额猜测，按窗口继续同步官方完整奖级数据；已完成窗口复用缓存，下一窗口重新发现最新开奖。实际兑奖须以官方当期公告及实体彩票为准。
 
 ## 测试
 
 ```bash
+go test ./...
+go vet ./...
 npm test
 ```
 
-包括原 CLI/浏览器核心测试，以及服务端参数校验、复式奖级统计、规则切换、SQLite 重启/删除/分页、逐期幂等验奖、上游异常及 HTTP 无令牌调用/请求限制测试。测试使用隔离临时数据库与受控开奖数据，不依赖实时网络。
+Linux CI 还运行 `go test -race ./...`，需启用 CGO 和 C 编译器。生产镜像仍以 `CGO_ENABLED=0` 构建。
+
+包括原 CLI/浏览器核心测试，以及服务端参数校验、复式奖级统计、规则切换、SQLite 重启/删除/分页、逐期幂等验奖、上游异常及 HTTP 请求限制、旧任务路径 404 和内置调度测试。测试使用隔离临时数据库与受控开奖数据，不依赖实时网络。

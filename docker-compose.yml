@@ -5,11 +5,13 @@ services:
     ports:
       - '3100:3000'
     environment:
-      NODE_ENV: production
       TZ: Asia/Shanghai
       HOST: 0.0.0.0
       PORT: '3000'
       DATABASE_PATH: /app/data/lottery.sqlite
+      CHECK_ENABLED: '${CHECK_ENABLED:-true}'
+      CHECK_SCHEDULE: '${CHECK_SCHEDULE:-*/20 22-23 * * *;0 0 * * *}'
+      CHECK_TIMEZONE: '${CHECK_TIMEZONE:-Asia/Shanghai}'
     volumes:
       - lottery-data:/app/data
     restart: always

@@ -1,4 +1,4 @@
-package lottery
+package domain
 
 import (
 	"crypto/rand"

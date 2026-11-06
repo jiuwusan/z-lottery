@@ -1,4 +1,4 @@
-package lottery
+package gateway
 
 import (
 	"context"
@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/jiuwusan/z-lottery/internal/domain"
 )
 
 type providerTransport func(*http.Request) (*http.Response, error)
@@ -111,10 +113,10 @@ func TestProviderSnapshotPublishedIncludesOlderIncompleteAndUnreviewedRows(t *te
 			if ready {
 				wantPublished = 2
 			}
-			if err != nil || len(s.Draws) != 1 || s.Draws[0].Issue != "26125" || len(s.Published) != wantPublished || s.HasUnready == ready || s.Latest == nil || !OfficialAmountsComplete(*s.Latest) || calls != 1 {
+			if err != nil || len(s.Draws) != 1 || s.Draws[0].Issue != "26125" || len(s.Published) != wantPublished || s.HasUnready == ready || s.Latest == nil || !domain.OfficialAmountsComplete(*s.Latest) || calls != 1 {
 				t.Fatalf("snapshot %+v err=%v calls=%d", s, err, calls)
 			}
-			if ready && OfficialAmountsComplete(s.Published[1]) {
+			if ready && domain.OfficialAmountsComplete(s.Published[1]) {
 				t.Fatal("older incomplete official record lost missing grades")
 			}
 			draws, err := p.GetHistory(context.Background(), "dlt", "2026-11-02", "2026-11-04")
@@ -135,31 +137,31 @@ func TestOfficialAmountsCompleteRequiresEveryOfficialGrade(t *testing.T) {
 					count = 9
 				}
 			}
-			d := Draw{Game: game, Issue: issue, Prizes: map[int]*float64{}, AppendPrizes: map[int]*float64{}}
+			d := domain.Draw{Game: game, Issue: issue, Prizes: map[int]*float64{}, AppendPrizes: map[int]*float64{}}
 			for i := 1; i <= count; i++ {
-				d.Prizes[i] = amountPointer(0)
+				d.Prizes[i] = domain.AmountPointer(0)
 			}
-			d.AppendPrizes[1] = amountPointer(0)
-			d.AppendPrizes[2] = amountPointer(0)
-			if !OfficialAmountsComplete(d) {
+			d.AppendPrizes[1] = domain.AmountPointer(0)
+			d.AppendPrizes[2] = domain.AmountPointer(0)
+			if !domain.OfficialAmountsComplete(d) {
 				t.Fatalf("zero official amounts incomplete %+v", d)
 			}
-			for _, bad := range []*float64{nil, amountPointer(-1), amountPointer(math.NaN()), amountPointer(math.Inf(1)), amountPointer(float64(MaxSafeInteger))} {
+			for _, bad := range []*float64{nil, domain.AmountPointer(-1), domain.AmountPointer(math.NaN()), domain.AmountPointer(math.Inf(1)), domain.AmountPointer(float64(domain.MaxSafeInteger))} {
 				d.Prizes[count] = bad
-				if OfficialAmountsComplete(d) {
+				if domain.OfficialAmountsComplete(d) {
 					t.Fatalf("missing unheld grade accepted game=%s issue=%s bad=%v", game, issue, bad)
 				}
 			}
-			d.Prizes[count] = amountPointer(0)
+			d.Prizes[count] = domain.AmountPointer(0)
 			if game == "dlt" {
 				delete(d.AppendPrizes, 2)
-				if OfficialAmountsComplete(d) {
+				if domain.OfficialAmountsComplete(d) {
 					t.Fatal("missing append grade accepted")
 				}
 			}
 		}
 	}
-	if OfficialAmountsComplete(Draw{Game: "bad"}) {
+	if domain.OfficialAmountsComplete(domain.Draw{Game: "bad"}) {
 		t.Fatal("invalid game accepted")
 	}
 }

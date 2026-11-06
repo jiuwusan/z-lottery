@@ -1,4 +1,4 @@
-package lottery_test
+package domain_test
 
 import (
 	"crypto/rand"
@@ -10,7 +10,7 @@ import (
 	"testing"
 
 	"github.com/dop251/goja"
-	"github.com/jiuwusan/z-lottery/internal/lottery"
+	"github.com/jiuwusan/z-lottery/internal/domain"
 	assets "github.com/jiuwusan/z-lottery/lottery"
 )
 
@@ -42,7 +42,7 @@ func browserEngine(t *testing.T) *goja.Runtime {
 	return vm
 }
 
-func browserGenerate(t *testing.T, vm *goja.Runtime, c lottery.Config) lottery.Generation {
+func browserGenerate(t *testing.T, vm *goja.Runtime, c domain.Config) domain.Generation {
 	t.Helper()
 	input, err := json.Marshal(c)
 	if err != nil {
@@ -52,14 +52,14 @@ func browserGenerate(t *testing.T, vm *goja.Runtime, c lottery.Config) lottery.G
 	if err != nil {
 		t.Fatal(err)
 	}
-	var r lottery.Generation
+	var r domain.Generation
 	if err = json.Unmarshal([]byte(value.String()), &r); err != nil {
 		t.Fatal(err)
 	}
 	return r
 }
 
-func checkTickets(t *testing.T, r lottery.Generation) {
+func checkTickets(t *testing.T, r domain.Generation) {
 	t.Helper()
 	c := r.Config
 	frontMax, backMax := 35, 12
@@ -103,11 +103,11 @@ func checkTickets(t *testing.T, r lottery.Generation) {
 func TestBrowserAndGoGeneration(t *testing.T) {
 	vm := browserEngine(t)
 	for _, game := range []string{"dlt", "ssq"} {
-		base, err := lottery.DefaultGenerationConfig(game)
+		base, err := domain.DefaultGenerationConfig(game)
 		if err != nil {
 			t.Fatal(err)
 		}
-		cases := []lottery.Config{base}
+		cases := []domain.Config{base}
 		shared := base
 		shared.Count = 20
 		shared.Front = 8
@@ -149,7 +149,7 @@ func TestBrowserAndGoGeneration(t *testing.T) {
 		cases = append(cases, max)
 		for i, c := range cases {
 			t.Run(fmt.Sprintf("%s/%d", game, i), func(t *testing.T) {
-				actual, err := lottery.Generate(c)
+				actual, err := domain.Generate(c)
 				if err != nil {
 					t.Fatal(err)
 				}
@@ -182,7 +182,7 @@ func TestBrowserDefaultsAndAmounts(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		var r lottery.Generation
+		var r domain.Generation
 		if err = json.Unmarshal([]byte(value.String()), &r); err != nil {
 			t.Fatal(err)
 		}
@@ -209,20 +209,20 @@ func TestBrowserRejectsInvalidGeneration(t *testing.T) {
 }
 
 func TestGoRejectsInvalidGeneration(t *testing.T) {
-	base, _ := lottery.DefaultGenerationConfig("dlt")
-	for _, mutate := range []func(*lottery.Config){
-		func(c *lottery.Config) { c.Game = "unknown" }, func(c *lottery.Config) { c.Game = "ssq"; c.Append = true },
-		func(c *lottery.Config) { c.Front = 4 }, func(c *lottery.Config) { c.Back = 13 },
-		func(c *lottery.Config) { c.Count = 0 }, func(c *lottery.Config) { c.Count = 1001 },
-		func(c *lottery.Config) { c.Multiple = 0 }, func(c *lottery.Config) { c.Periods = 0 },
-		func(c *lottery.Config) { c.SameFront = -1 }, func(c *lottery.Config) { c.SameFront = 7 }, func(c *lottery.Config) { c.SameBack = 4 },
-		func(c *lottery.Config) { c.Multiple = lottery.MaxSafeInteger },
-		func(c *lottery.Config) { c.Periods = int(lottery.MaxSafeInteger) },
-		func(c *lottery.Config) { c.Multiple = 1 << 62 },
+	base, _ := domain.DefaultGenerationConfig("dlt")
+	for _, mutate := range []func(*domain.Config){
+		func(c *domain.Config) { c.Game = "unknown" }, func(c *domain.Config) { c.Game = "ssq"; c.Append = true },
+		func(c *domain.Config) { c.Front = 4 }, func(c *domain.Config) { c.Back = 13 },
+		func(c *domain.Config) { c.Count = 0 }, func(c *domain.Config) { c.Count = 1001 },
+		func(c *domain.Config) { c.Multiple = 0 }, func(c *domain.Config) { c.Periods = 0 },
+		func(c *domain.Config) { c.SameFront = -1 }, func(c *domain.Config) { c.SameFront = 7 }, func(c *domain.Config) { c.SameBack = 4 },
+		func(c *domain.Config) { c.Multiple = domain.MaxSafeInteger },
+		func(c *domain.Config) { c.Periods = int(domain.MaxSafeInteger) },
+		func(c *domain.Config) { c.Multiple = 1 << 62 },
 	} {
 		c := base
 		mutate(&c)
-		if _, err := lottery.Generate(c); err == nil {
+		if _, err := domain.Generate(c); err == nil {
 			t.Fatalf("accepted %+v", c)
 		}
 	}

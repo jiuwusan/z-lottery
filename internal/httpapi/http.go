@@ -1,4 +1,4 @@
-package lottery
+package httpapi
 
 import (
 	"encoding/json"
@@ -13,6 +13,8 @@ import (
 	"regexp"
 	"strconv"
 	"strings"
+
+	"github.com/jiuwusan/z-lottery/internal/domain"
 )
 
 func sendJSON(w http.ResponseWriter, status int, body any) {
@@ -25,7 +27,7 @@ func sendJSON(w http.ResponseWriter, status int, body any) {
 func sendError(w http.ResponseWriter, err error) {
 	status := 500
 	message := "服务内部错误"
-	var app *AppError
+	var app *domain.AppError
 	if errors.As(err, &app) {
 		status = app.Status
 		message = app.Message
@@ -35,28 +37,35 @@ func sendError(w http.ResponseWriter, err error) {
 	sendJSON(w, status, map[string]string{"error": message})
 }
 func integerParameter(raw string, min, max int, name string) (int, error) {
-	text := domainTrim(raw)
+	text := domain.Trim(raw)
 	n, err := strconv.ParseFloat(text, 64)
 	if strings.HasPrefix(text, "0x") || strings.HasPrefix(text, "0X") || strings.HasPrefix(text, "0b") || strings.HasPrefix(text, "0B") || strings.HasPrefix(text, "0o") || strings.HasPrefix(text, "0O") {
 		integer, e := strconv.ParseUint(text, 0, 64)
 		n, err = float64(integer), e
 	}
 	if err != nil || strings.Contains(text, "_") || math.IsNaN(n) || n != math.Trunc(n) || n < float64(min) || n > float64(max) {
-		return 0, appError(400, name+"超出有效范围")
+		return 0, domain.NewError(400, name+"超出有效范围")
 	}
 	return int(n), nil
 }
 
 var betIDPath = regexp.MustCompile(`^[1-9][0-9]*$`)
 
-func NewHTTPHandler(service *Service, assets fs.FS) http.Handler {
+type BetService interface {
+	Create([]byte) (domain.Bet, error)
+	List(domain.ListOptions) (domain.BetPage, error)
+	Get(int64) (domain.Bet, error)
+	Remove(int64) error
+}
+
+func NewHTTPHandler(service BetService, assets fs.FS) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("X-Content-Type-Options", "nosniff")
 		w.Header().Set("Cache-Control", "no-store")
 		fail := func(err error) { sendError(w, err) }
 		methodError := func(allowed string) {
 			w.Header().Set("Allow", allowed)
-			fail(appError(405, "该接口仅支持 "+allowed))
+			fail(domain.NewError(405, "该接口仅支持 "+allowed))
 		}
 		route := r.URL.Path
 		if route == "/api/health" {
@@ -76,15 +85,15 @@ func NewHTTPHandler(service *Service, assets fs.FS) http.Handler {
 						q.Set(key, values[len(values)-1])
 					}
 				}
-				o := ListOptions{Game: q.Get("game"), Status: q.Get("status")}
+				o := domain.ListOptions{Game: q.Get("game"), Status: q.Get("status")}
 				var err error
 				if q.Has("game") && o.Game != "dlt" && o.Game != "ssq" {
-					fail(appError(400, "彩种错误"))
+					fail(domain.NewError(400, "彩种错误"))
 					return
 				}
 				validStatuses := map[string]bool{"pending": true, "partial": true, "prize_pending": true, "won": true, "lost": true}
 				if q.Has("status") && !validStatuses[o.Status] {
-					fail(appError(400, "状态错误"))
+					fail(domain.NewError(400, "状态错误"))
 					return
 				}
 				if !q.Has("page") {
@@ -101,7 +110,7 @@ func NewHTTPHandler(service *Service, assets fs.FS) http.Handler {
 					fail(err)
 					return
 				}
-				page, err := service.Repository.List(o)
+				page, err := service.List(o)
 				if err != nil {
 					fail(err)
 					return
@@ -110,7 +119,7 @@ func NewHTTPHandler(service *Service, assets fs.FS) http.Handler {
 			case "POST":
 				media, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
 				if err != nil || media != "application/json" {
-					fail(appError(415, "请使用 application/json"))
+					fail(domain.NewError(415, "请使用 application/json"))
 					return
 				}
 				r.Body = http.MaxBytesReader(w, r.Body, 512*1024)
@@ -118,16 +127,16 @@ func NewHTTPHandler(service *Service, assets fs.FS) http.Handler {
 				if err != nil {
 					var size *http.MaxBytesError
 					if errors.As(err, &size) {
-						fail(appError(413, "请求体不能超过 512 KiB"))
+						fail(domain.NewError(413, "请求体不能超过 512 KiB"))
 					} else {
-						fail(appError(400, "无法读取请求体"))
+						fail(domain.NewError(400, "无法读取请求体"))
 					}
 					return
 				}
 				// Unmarshal once to reject null, arrays and trailing JSON with a clear error.
 				var object map[string]json.RawMessage
 				if err = json.Unmarshal(raw, &object); err != nil || object == nil {
-					fail(appError(400, "请求体必须为 JSON 对象"))
+					fail(domain.NewError(400, "请求体必须为 JSON 对象"))
 					return
 				}
 				b, err := service.Create(raw)
@@ -144,24 +153,24 @@ func NewHTTPHandler(service *Service, assets fs.FS) http.Handler {
 		if strings.HasPrefix(route, "/api/bets/") {
 			raw := strings.TrimPrefix(route, "/api/bets/")
 			if !betIDPath.MatchString(raw) {
-				fail(appError(404, "接口不存在"))
+				fail(domain.NewError(404, "接口不存在"))
 				return
 			}
 			id, err := strconv.ParseInt(raw, 10, 64)
-			if err != nil || id < 1 || id > MaxSafeInteger {
-				fail(appError(400, "记录 ID 无效"))
+			if err != nil || id < 1 || id > domain.MaxSafeInteger {
+				fail(domain.NewError(400, "记录 ID 无效"))
 				return
 			}
 			switch r.Method {
 			case "GET":
-				b, e := service.Repository.Get(id)
+				b, e := service.Get(id)
 				if e != nil {
 					fail(e)
 					return
 				}
 				sendJSON(w, 200, b)
 			case "DELETE":
-				if e := service.Repository.Remove(id); e != nil {
+				if e := service.Remove(id); e != nil {
 					fail(e)
 					return
 				}
@@ -172,7 +181,7 @@ func NewHTTPHandler(service *Service, assets fs.FS) http.Handler {
 			return
 		}
 		if strings.HasPrefix(route, "/api/") {
-			fail(appError(404, "接口不存在"))
+			fail(domain.NewError(404, "接口不存在"))
 			return
 		}
 		if r.Method != "GET" && r.Method != "HEAD" {
@@ -190,7 +199,7 @@ func NewHTTPHandler(service *Service, assets fs.FS) http.Handler {
 		switch name {
 		case "index.html", "favicon.svg", "styles.css", "lottery-core.js", "app.js", "records.js":
 		default:
-			fail(appError(404, "文件不存在"))
+			fail(domain.NewError(404, "文件不存在"))
 			return
 		}
 		data, err := fs.ReadFile(assets, name)

@@ -13,7 +13,10 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/jiuwusan/z-lottery/internal/gateway"
+	"github.com/jiuwusan/z-lottery/internal/httpapi"
 	"github.com/jiuwusan/z-lottery/internal/lottery"
+	"github.com/jiuwusan/z-lottery/internal/repository"
 	assets "github.com/jiuwusan/z-lottery/lottery"
 	"github.com/joho/godotenv"
 )
@@ -76,14 +79,14 @@ func run() error {
 	if err != nil {
 		return err
 	}
-	repository, err := lottery.OpenRepository(c.database)
+	repository, err := repository.OpenRepository(c.database)
 	if err != nil {
 		return fmt.Errorf("打开 SQLite: %w", err)
 	}
 	defer repository.Close()
-	service := lottery.NewService(repository, lottery.NewDrawProvider(nil))
+	service := lottery.NewService(repository, gateway.NewDrawProvider(nil))
 	logger := slog.Default()
-	server := &http.Server{Addr: net.JoinHostPort(c.host, c.port), Handler: lottery.NewHTTPHandler(service, assets.Files), ReadHeaderTimeout: 15 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 64 * 1024}
+	server := &http.Server{Addr: net.JoinHostPort(c.host, c.port), Handler: httpapi.NewHTTPHandler(service, assets.Files), ReadHeaderTimeout: 15 * time.Second, ReadTimeout: 30 * time.Second, WriteTimeout: 30 * time.Second, IdleTimeout: 60 * time.Second, MaxHeaderBytes: 64 * 1024}
 	listener, err := net.Listen("tcp", server.Addr)
 	if err != nil {
 		return err

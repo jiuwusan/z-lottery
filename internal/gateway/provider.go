@@ -1,4 +1,4 @@
-package lottery
+package gateway
 
 import (
 	"context"
@@ -13,47 +13,9 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"github.com/jiuwusan/z-lottery/internal/domain"
 )
-
-type Provider interface {
-	GetDraw(context.Context, string, string) (*Draw, error)
-	GetHistory(context.Context, string, string, string) ([]Draw, error)
-}
-type OfficialSnapshot struct {
-	Draws                   []Draw
-	Published               []Draw
-	HasUnready              bool
-	Latest                  *Draw
-	LatestIssue, LatestDate string
-	LatestReady             bool
-}
-
-// SnapshotProvider adds official publication state without changing the
-// legacy provider contract used by local consumers and existing integrations.
-type SnapshotProvider interface {
-	GetSnapshot(context.Context, string, string, string) (OfficialSnapshot, error)
-}
-
-func OfficialAmountsComplete(draw Draw) bool {
-	levels := 6
-	switch draw.Game {
-	case "ssq":
-	case "dlt":
-		levels = 7
-		if draw.Issue < "26014" {
-			levels = 9
-		}
-	default:
-		return false
-	}
-	complete := func(amount *float64) bool { cents, err := domainCents(amount); return err == nil && cents != nil }
-	for level := 1; level <= levels; level++ {
-		if !complete(draw.Prizes[level]) {
-			return false
-		}
-	}
-	return draw.Game != "dlt" || complete(draw.AppendPrizes[1]) && complete(draw.AppendPrizes[2])
-}
 
 type DrawProvider struct{ client *http.Client }
 
@@ -63,7 +25,7 @@ func NewDrawProvider(client *http.Client) *DrawProvider {
 	}
 	return &DrawProvider{client: client}
 }
-func providerError(s string) error { return appError(502, s) }
+func providerError(s string) error { return domain.NewError(502, s) }
 func providerString(v any) string {
 	if v == nil {
 		return ""
@@ -110,7 +72,7 @@ func providerMoney(raw any) (*float64, error) {
 		cents = parts[0] + parts[1] + strings.Repeat("0", 2-len(parts[1]))
 	}
 	n, e := strconv.ParseUint(cents, 10, 64)
-	if e != nil || n > uint64(MaxSafeInteger) {
+	if e != nil || n > uint64(domain.MaxSafeInteger) {
 		return nil, providerError("官方奖金超过精度范围")
 	}
 	f := float64(n) / 100
@@ -159,8 +121,8 @@ func providerPrecedingIssue(game, issue string) (string, error) {
 	return "", providerError("历史开奖期号格式无效")
 }
 
-func providerRowToDraw(game string, row map[string]any) (*Draw, error) {
-	d := &Draw{Game: game, Prizes: map[int]*float64{}, AppendPrizes: map[int]*float64{}}
+func providerRowToDraw(game string, row map[string]any) (*domain.Draw, error) {
+	d := &domain.Draw{Game: game, Prizes: map[int]*float64{}, AppendPrizes: map[int]*float64{}}
 	var rawIssue any
 	var prizes []any
 	if game == "dlt" {
@@ -226,7 +188,7 @@ func providerRowToDraw(game string, row map[string]any) (*Draw, error) {
 			return nil, e
 		}
 	}
-	issue, e := NormalizeIssue(game, providerString(rawIssue))
+	issue, e := domain.NormalizeIssue(game, providerString(rawIssue))
 	if e != nil {
 		return nil, providerError("历史开奖期号格式无效")
 	}
@@ -269,7 +231,7 @@ func providerRowToDraw(game string, row map[string]any) (*Draw, error) {
 	if e := providerDate(d.Date); e != nil {
 		return nil, e
 	}
-	d.SalesCloseAt, e = SalesCloseAt(*d)
+	d.SalesCloseAt, e = domain.SalesCloseAt(*d)
 	if e != nil {
 		return nil, e
 	}
@@ -316,7 +278,7 @@ func (p *DrawProvider) request(ctx context.Context, u *url.URL, referer string) 
 }
 func (p *DrawProvider) page(ctx context.Context, game string, page int, issue string) ([]map[string]any, int, int, error) {
 	if game != "dlt" && game != "ssq" {
-		return nil, 0, 0, appError(400, "请选择大乐透或双色球")
+		return nil, 0, 0, domain.NewError(400, "请选择大乐透或双色球")
 	}
 	size := "100"
 	if issue != "" {
@@ -385,8 +347,8 @@ func (p *DrawProvider) page(ctx context.Context, game string, page int, issue st
 	}
 	return rows, pages, total, nil
 }
-func (p *DrawProvider) GetDraw(ctx context.Context, game, requestedIssue string) (*Draw, error) {
-	issue, e := NormalizeIssue(game, requestedIssue)
+func (p *DrawProvider) GetDraw(ctx context.Context, game, requestedIssue string) (*domain.Draw, error) {
+	issue, e := domain.NormalizeIssue(game, requestedIssue)
 	if e != nil {
 		return nil, e
 	}
@@ -408,39 +370,39 @@ func (p *DrawProvider) GetDraw(ctx context.Context, game, requestedIssue string)
 	}
 	return nil, providerError("官方接口未返回指定期号")
 }
-func (p *DrawProvider) GetHistory(ctx context.Context, game, fromDate, throughDate string) ([]Draw, error) {
+func (p *DrawProvider) GetHistory(ctx context.Context, game, fromDate, throughDate string) ([]domain.Draw, error) {
 	snapshot, err := p.GetSnapshot(ctx, game, fromDate, throughDate)
 	return snapshot.Draws, err
 }
 
-func (p *DrawProvider) GetSnapshot(ctx context.Context, game, fromDate, throughDate string) (OfficialSnapshot, error) {
-	snapshot := OfficialSnapshot{Draws: []Draw{}, Published: []Draw{}}
+func (p *DrawProvider) GetSnapshot(ctx context.Context, game, fromDate, throughDate string) (domain.OfficialSnapshot, error) {
+	snapshot := domain.OfficialSnapshot{Draws: []domain.Draw{}, Published: []domain.Draw{}}
 	if game != "dlt" && game != "ssq" {
-		return OfficialSnapshot{}, appError(400, "请选择大乐透或双色球")
+		return domain.OfficialSnapshot{}, domain.NewError(400, "请选择大乐透或双色球")
 	}
 	if providerDate(fromDate) != nil || providerDate(throughDate) != nil || fromDate > throughDate {
-		return OfficialSnapshot{}, appError(400, "历史开奖日期范围无效")
+		return domain.OfficialSnapshot{}, domain.NewError(400, "历史开奖日期范围无效")
 	}
-	found := map[string]Draw{}
-	var preceding *Draw
+	found := map[string]domain.Draw{}
+	var preceding *domain.Draw
 	covered := false
 	unready := []string{}
 	for page := 1; page <= 50; page++ {
 		rows, pages, total, e := p.page(ctx, game, page, "")
 		if e != nil {
-			return OfficialSnapshot{}, e
+			return domain.OfficialSnapshot{}, e
 		}
 		if len(rows) == 0 {
 			if total != 0 || page != 1 {
-				return OfficialSnapshot{}, providerError("历史开奖分页不完整，请稍后重试")
+				return domain.OfficialSnapshot{}, providerError("历史开奖分页不完整，请稍后重试")
 			}
 			return snapshot, nil
 		}
 		// Page one's official records control publication completeness independently
 		// of the requested betting window. Parse them once and reuse them below.
-		parsed := map[int]*Draw{}
+		parsed := map[int]*domain.Draw{}
 		if page == 1 {
-			published := map[string]Draw{}
+			published := map[string]domain.Draw{}
 			for index, row := range rows {
 				dateKey, issueKey := "date", "code"
 				if game == "dlt" {
@@ -448,26 +410,26 @@ func (p *DrawProvider) GetSnapshot(ctx context.Context, game, fromDate, throughD
 				}
 				date := providerDatePart(row[dateKey])
 				if err := providerDate(date); err != nil {
-					return OfficialSnapshot{}, err
+					return domain.OfficialSnapshot{}, err
 				}
 				if date > throughDate {
 					continue
 				}
 				issue, err := providerPrecedingIssue(game, providerString(row[issueKey]))
 				if err != nil {
-					return OfficialSnapshot{}, err
+					return domain.OfficialSnapshot{}, err
 				}
 				// Older DLT issues are useful coverage/gap metadata, but their prize
 				// rules are outside the supported official cache.
 				if game == "dlt" && issue < "19019" {
 					continue
 				}
-				if _, err := NormalizeIssue(game, issue); err != nil {
-					return OfficialSnapshot{}, providerError("历史开奖期号格式无效")
+				if _, err := domain.NormalizeIssue(game, issue); err != nil {
+					return domain.OfficialSnapshot{}, providerError("历史开奖期号格式无效")
 				}
 				draw, err := providerRowToDraw(game, row)
 				if err != nil {
-					return OfficialSnapshot{}, err
+					return domain.OfficialSnapshot{}, err
 				}
 				parsed[index] = draw
 				if draw == nil {
@@ -475,7 +437,7 @@ func (p *DrawProvider) GetSnapshot(ctx context.Context, game, fromDate, throughD
 				} else {
 					if previous, exists := published[draw.Issue]; exists {
 						if !reflect.DeepEqual(previous, *draw) {
-							return OfficialSnapshot{}, providerError("官方开奖列表存在同一期数据冲突，暂缓同步")
+							return domain.OfficialSnapshot{}, providerError("官方开奖列表存在同一期数据冲突，暂缓同步")
 						}
 					} else {
 						published[draw.Issue] = *draw
@@ -497,7 +459,7 @@ func (p *DrawProvider) GetSnapshot(ctx context.Context, game, fromDate, throughD
 			}
 			date := providerDatePart(row[dateKey])
 			if e := providerDate(date); e != nil {
-				return OfficialSnapshot{}, e
+				return domain.OfficialSnapshot{}, e
 			}
 			if oldest == "" || date < oldest {
 				oldest = date
@@ -506,9 +468,9 @@ func (p *DrawProvider) GetSnapshot(ctx context.Context, game, fromDate, throughD
 				if preceding == nil || date > preceding.Date {
 					issue, e := providerPrecedingIssue(game, providerString(row[issueKey]))
 					if e != nil {
-						return OfficialSnapshot{}, providerError("历史开奖期号格式无效")
+						return domain.OfficialSnapshot{}, providerError("历史开奖期号格式无效")
 					}
-					preceding = &Draw{Issue: issue, Date: date}
+					preceding = &domain.Draw{Issue: issue, Date: date}
 				}
 				continue
 			}
@@ -520,7 +482,7 @@ func (p *DrawProvider) GetSnapshot(ctx context.Context, game, fromDate, throughD
 				var err error
 				d, err = providerRowToDraw(game, row)
 				if err != nil {
-					return OfficialSnapshot{}, err
+					return domain.OfficialSnapshot{}, err
 				}
 			}
 			if d == nil {
@@ -528,7 +490,7 @@ func (p *DrawProvider) GetSnapshot(ctx context.Context, game, fromDate, throughD
 				continue
 			}
 			if prior, ok := found[d.Issue]; ok && !reflect.DeepEqual(prior, *d) {
-				return OfficialSnapshot{}, providerError("历史开奖数据冲突，请稍后重试")
+				return domain.OfficialSnapshot{}, providerError("历史开奖数据冲突，请稍后重试")
 			}
 			found[d.Issue] = *d
 		}
@@ -541,9 +503,9 @@ func (p *DrawProvider) GetSnapshot(ctx context.Context, game, fromDate, throughD
 		}
 	}
 	if !covered {
-		return OfficialSnapshot{}, providerError("历史开奖未完整覆盖投注日期，暂缓验奖")
+		return domain.OfficialSnapshot{}, providerError("历史开奖未完整覆盖投注日期，暂缓验奖")
 	}
-	draws := make([]Draw, 0, len(found))
+	draws := make([]domain.Draw, 0, len(found))
 	for _, d := range found {
 		draws = append(draws, d)
 	}
@@ -556,13 +518,13 @@ func (p *DrawProvider) GetSnapshot(ctx context.Context, game, fromDate, throughD
 	for _, date := range unready {
 		for _, d := range draws {
 			if d.Date > date {
-				return OfficialSnapshot{}, providerError("历史开奖存在未审核记录，暂缓匹配")
+				return domain.OfficialSnapshot{}, providerError("历史开奖存在未审核记录，暂缓匹配")
 			}
 		}
 	}
 	sequence := draws
 	if preceding != nil {
-		sequence = append([]Draw{*preceding}, draws...)
+		sequence = append([]domain.Draw{*preceding}, draws...)
 	}
 	for i := 1; i < len(sequence); i++ {
 		a, b := sequence[i-1], sequence[i]
@@ -570,7 +532,7 @@ func (p *DrawProvider) GetSnapshot(ctx context.Context, game, fromDate, throughD
 		an, _ := strconv.Atoi(a.Issue[len(a.Issue)-3:])
 		bn, _ := strconv.Atoi(b.Issue[len(b.Issue)-3:])
 		if a.Date == b.Date || (ap == bp && bn != an+1) || (ap != bp && bn != 1) {
-			return OfficialSnapshot{}, providerError("历史开奖存在缺口，暂缓匹配")
+			return domain.OfficialSnapshot{}, providerError("历史开奖存在缺口，暂缓匹配")
 		}
 	}
 	snapshot.Draws = draws

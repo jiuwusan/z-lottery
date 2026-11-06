@@ -8,7 +8,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/jiuwusan/z-lottery/internal/lottery"
+	"github.com/jiuwusan/z-lottery/internal/domain"
 )
 
 const help = `彩票完全随机选号
@@ -37,7 +37,7 @@ const help = `彩票完全随机选号
 
 var samePattern = regexp.MustCompile(`^[0-9]+(,[0-9]+)?$`)
 
-func parse(args []string) (lottery.Config, bool, bool, error) {
+func parse(args []string) (domain.Config, bool, bool, error) {
 	values := map[string]string{"game": "dlt"}
 	appendBet, wantsHelp := false, false
 	for i := 0; i < len(args); i++ {
@@ -49,18 +49,18 @@ func parse(args []string) (lottery.Config, bool, bool, error) {
 			appendBet = true
 		case "--game", "--front", "--back", "--count", "--multiple", "--periods", "--same":
 			if i+1 >= len(args) || strings.HasPrefix(args[i+1], "--") {
-				return lottery.Config{}, false, false, fmt.Errorf("%s 缺少参数值", arg)
+				return domain.Config{}, false, false, fmt.Errorf("%s 缺少参数值", arg)
 			}
 			i++
 			values[strings.TrimPrefix(arg, "--")] = args[i]
 		default:
-			return lottery.Config{}, false, false, fmt.Errorf("未知参数：%s", arg)
+			return domain.Config{}, false, false, fmt.Errorf("未知参数：%s", arg)
 		}
 	}
 	if wantsHelp {
-		return lottery.Config{}, false, true, nil
+		return domain.Config{}, false, true, nil
 	}
-	c, err := lottery.DefaultGenerationConfig(values["game"])
+	c, err := domain.DefaultGenerationConfig(values["game"])
 	if err != nil {
 		return c, false, false, err
 	}
@@ -118,7 +118,7 @@ func run(args []string, out, errOut io.Writer) int {
 		fmt.Fprint(out, help)
 		return 0
 	}
-	r, err := lottery.Generate(c)
+	r, err := domain.Generate(c)
 	if err != nil {
 		fmt.Fprintf(errOut, "错误：%s\n", err)
 		return 1

@@ -1,15 +1,17 @@
-package lottery
+package repository
 
 import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"math"
-	_ "modernc.org/sqlite"
 	"os"
 	"path/filepath"
 	"sync"
 	"time"
+
+	"github.com/jiuwusan/z-lottery/internal/domain"
+	_ "modernc.org/sqlite"
 )
 
 const statesSQL = `WITH states AS (
@@ -29,24 +31,6 @@ type queryer interface {
 	Exec(string, ...any) (sql.Result, error)
 	Query(string, ...any) (*sql.Rows, error)
 	QueryRow(string, ...any) *sql.Row
-}
-type ListOptions struct {
-	Page, PageSize int
-	Game, Status   string
-}
-type BetPage struct {
-	Items    []Bet `json:"items"`
-	Total    int   `json:"total"`
-	Page     int   `json:"page"`
-	PageSize int   `json:"pageSize"`
-}
-type PendingTask struct {
-	ID                         int64
-	Game, Issue, PlacedAt, Key string
-}
-type Evaluation struct {
-	ID     int64
-	Result Result
 }
 
 func OpenRepository(filename string) (*Repository, error) {
@@ -128,8 +112,8 @@ func scanStored(rows interface{ Scan(...any) error }) (storedBet, error) {
 
 const selectStored = "SELECT id,payload,match_mode,placed_at,created_at,status FROM states "
 
-func hydrate(q queryer, row storedBet) (Bet, error) {
-	var b Bet
+func hydrate(q queryer, row storedBet) (domain.Bet, error) {
+	var b domain.Bet
 	if err := json.Unmarshal([]byte(row.payload), &b.Payload); err != nil {
 		return b, err
 	}
@@ -142,7 +126,7 @@ func hydrate(q queryer, row storedBet) (Bet, error) {
 	}
 	b.Status = row.status
 	b.Issues = []string{}
-	b.Results = []Result{}
+	b.Results = []domain.Result{}
 	rows, err := q.Query("SELECT issue FROM bet_issues WHERE bet_id=? ORDER BY issue", row.id)
 	if err != nil {
 		return b, err
@@ -172,7 +156,7 @@ func hydrate(q queryer, row storedBet) (Bet, error) {
 		if err = rows.Scan(&text, &at); err != nil {
 			break
 		}
-		var result Result
+		var result domain.Result
 		if err = json.Unmarshal([]byte(text), &result); err != nil {
 			break
 		}
@@ -196,25 +180,25 @@ func hydrate(q queryer, row storedBet) (Bet, error) {
 	}
 	return b, nil
 }
-func getWith(q queryer, id int64) (Bet, error) {
+func getWith(q queryer, id int64) (domain.Bet, error) {
 	row, err := scanStored(q.QueryRow(statesSQL+selectStored+"WHERE id=?", id))
 	if err == sql.ErrNoRows {
-		return Bet{}, appError(404, "投注记录不存在")
+		return domain.Bet{}, domain.NewError(404, "投注记录不存在")
 	}
 	if err != nil {
-		return Bet{}, err
+		return domain.Bet{}, err
 	}
 	return hydrate(q, row)
 }
-func (r *Repository) Get(id int64) (Bet, error) {
+func (r *Repository) Get(id int64) (domain.Bet, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return getWith(r.db, id)
 }
-func (r *Repository) Create(payload Payload) (Bet, error) {
+func (r *Repository) Create(payload domain.Payload) (domain.Bet, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	var b Bet
+	var b domain.Bet
 	err := r.transaction(func(tx *sql.Tx) error {
 		raw, err := json.Marshal(payload)
 		if err != nil {
@@ -250,14 +234,14 @@ func (r *Repository) Remove(id int64) error {
 		return err
 	}
 	if n == 0 {
-		return appError(404, "投注记录不存在")
+		return domain.NewError(404, "投注记录不存在")
 	}
 	return nil
 }
-func (r *Repository) List(o ListOptions) (BetPage, error) {
+func (r *Repository) List(o domain.ListOptions) (domain.BetPage, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	out := BetPage{Items: []Bet{}, Page: o.Page, PageSize: o.PageSize}
+	out := domain.BetPage{Items: []domain.Bet{}, Page: o.Page, PageSize: o.PageSize}
 	where := " WHERE 1=1"
 	args := []any{}
 	if o.Game != "" {
@@ -300,7 +284,7 @@ func (r *Repository) List(o ListOptions) (BetPage, error) {
 	}
 	return out, nil
 }
-func (r *Repository) Pending(after string, limit int) ([]PendingTask, error) {
+func (r *Repository) Pending(after string, limit int) ([]domain.PendingTask, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	rows, err := r.db.Query(statesSQL+`SELECT id,game,issue,placed_at,key FROM (
@@ -311,9 +295,9 @@ func (r *Repository) Pending(after string, limit int) ([]PendingTask, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	tasks := []PendingTask{}
+	tasks := []domain.PendingTask{}
 	for rows.Next() {
-		var task PendingTask
+		var task domain.PendingTask
 		var placed sql.NullString
 		if err = rows.Scan(&task.ID, &task.Game, &task.Issue, &placed, &task.Key); err != nil {
 			return nil, err
@@ -323,7 +307,7 @@ func (r *Repository) Pending(after string, limit int) ([]PendingTask, error) {
 	}
 	return tasks, rows.Err()
 }
-func (r *Repository) ForIssue(game, issue string) ([]Bet, error) {
+func (r *Repository) ForIssue(game, issue string) ([]domain.Bet, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	rows, err := r.db.Query(`SELECT b.id FROM bets b JOIN bet_issues i ON i.bet_id=b.id LEFT JOIN results r ON r.bet_id=i.bet_id AND r.issue=i.issue WHERE b.match_mode='issue' AND b.game=? AND i.issue=? AND (r.issue IS NULL OR r.complete=0)`, game, issue)
@@ -345,7 +329,7 @@ func (r *Repository) ForIssue(game, issue string) ([]Bet, error) {
 	if err != nil {
 		return nil, err
 	}
-	bets := []Bet{}
+	bets := []domain.Bet{}
 	for _, id := range ids {
 		b, e := getWith(r.db, id)
 		if e != nil {
@@ -355,7 +339,7 @@ func (r *Repository) ForIssue(game, issue string) ([]Bet, error) {
 	}
 	return bets, nil
 }
-func writeCheck(tx *sql.Tx, draw Draw, evaluations []Evaluation) error {
+func writeCheck(tx *sql.Tx, draw domain.Draw, evaluations []domain.Evaluation) error {
 	now := time.Now().UTC().Format("2006-01-02T15:04:05.000Z")
 	if err := cacheOfficial(tx, draw); err != nil {
 		return err
@@ -382,7 +366,7 @@ func writeCheck(tx *sql.Tx, draw Draw, evaluations []Evaluation) error {
 			if err = rows.Scan(&text); err != nil {
 				break
 			}
-			var other Result
+			var other domain.Result
 			if err = json.Unmarshal([]byte(text), &other); err != nil {
 				break
 			}
@@ -395,8 +379,8 @@ func writeCheck(tx *sql.Tx, draw Draw, evaluations []Evaluation) error {
 		if err != nil {
 			return err
 		}
-		if total > float64(MaxSafeInteger) {
-			return appError(400, "跨期中奖合计超出安全精度，请拆分投注记录")
+		if total > float64(domain.MaxSafeInteger) {
+			return domain.NewError(400, "跨期中奖合计超出安全精度，请拆分投注记录")
 		}
 		result.CheckedAt = ""
 		raw, err = json.Marshal(result)
@@ -409,32 +393,32 @@ func writeCheck(tx *sql.Tx, draw Draw, evaluations []Evaluation) error {
 	}
 	return nil
 }
-func (r *Repository) SaveCheck(draw Draw, evals []Evaluation) error {
+func (r *Repository) SaveCheck(draw domain.Draw, evals []domain.Evaluation) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.transaction(func(tx *sql.Tx) error { return writeCheck(tx, draw, evals) })
 }
-func (r *Repository) SaveDateCheck(id int64, draws []Draw, results []Result) (int, error) {
+func (r *Repository) SaveDateCheck(id int64, draws []domain.Draw, results []domain.Result) (int, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	count := 0
 	err := r.transaction(func(tx *sql.Tx) error {
 		b, err := getWith(tx, id)
-		if e, ok := err.(*AppError); ok && e.Status == 404 {
+		if e, ok := err.(*domain.AppError); ok && e.Status == 404 {
 			return nil
 		}
 		if err != nil {
 			return err
 		}
 		if b.MatchMode != "date" || len(draws) > b.Config.Periods || len(draws) != len(results) {
-			return appError(500, "投注匹配模式或期数异常")
+			return domain.NewError(500, "投注匹配模式或期数异常")
 		}
 		if len(b.Issues) > len(draws) {
-			return appError(502, "历史开奖与已匹配结果不一致，暂缓验奖")
+			return domain.NewError(502, "历史开奖与已匹配结果不一致，暂缓验奖")
 		}
 		for i, issue := range b.Issues {
 			if draws[i].Issue != issue {
-				return appError(502, "历史开奖与已匹配结果不一致，暂缓验奖")
+				return domain.NewError(502, "历史开奖与已匹配结果不一致，暂缓验奖")
 			}
 		}
 		finished := map[string]bool{}
@@ -448,7 +432,7 @@ func (r *Repository) SaveDateCheck(id int64, draws []Draw, results []Result) (in
 			if _, err = tx.Exec("INSERT INTO bet_issues(bet_id,issue) VALUES(?,?) ON CONFLICT DO NOTHING", id, d.Issue); err != nil {
 				return err
 			}
-			if err = writeCheck(tx, d, []Evaluation{{ID: id, Result: results[i]}}); err != nil {
+			if err = writeCheck(tx, d, []domain.Evaluation{{ID: id, Result: results[i]}}); err != nil {
 				return fmt.Errorf("保存日期验奖: %w", err)
 			}
 		}

@@ -1,4 +1,4 @@
-package lottery
+package domain
 
 import (
 	"encoding/json"
@@ -21,7 +21,7 @@ var issuePattern = regexp.MustCompile(`^[0-9]{5}$`)
 var ssqIssuePattern = regexp.MustCompile(`^20[0-9]{5}$`)
 
 func NormalizeIssue(game, issue string) (string, error) {
-	value := domainTrim(issue)
+	value := Trim(issue)
 	if game == "dlt" && ssqIssuePattern.MatchString(value) {
 		value = value[2:]
 	}
@@ -31,10 +31,10 @@ func NormalizeIssue(game, issue string) (string, error) {
 		valid = ssqIssuePattern.MatchString(value)
 	}
 	if !ok || !valid || strings.HasSuffix(value, "000") {
-		return "", appError(400, "期号格式错误：大乐透如 26120，双色球如 2026120")
+		return "", NewError(400, "期号格式错误：大乐透如 26120，双色球如 2026120")
 	}
 	if game == "dlt" && value < "19019" {
-		return "", appError(400, "大乐透验奖支持 19019 期及以后")
+		return "", NewError(400, "大乐透验奖支持 19019 期及以后")
 	}
 	return value, nil
 }
@@ -60,13 +60,13 @@ func domainNumbers(raw json.RawMessage, min, max int, label string) ([]int, erro
 		values = append(values, int(n))
 	}
 	if !valid {
-		return nil, appError(400, fmt.Sprintf("%s号码必须在 1～%d 内、不重复，选择 %d～%d 个", label, max, min, max))
+		return nil, NewError(400, fmt.Sprintf("%s号码必须在 1～%d 内、不重复，选择 %d～%d 个", label, max, min, max))
 	}
 	sort.Ints(values)
 	return values, nil
 }
 func NormalizeBet(data []byte, now time.Time) (Payload, error) {
-	fail := func(s string) (Payload, error) { return Payload{}, appError(400, s) }
+	fail := func(s string) (Payload, error) { return Payload{}, NewError(400, s) }
 	var input map[string]json.RawMessage
 	if json.Unmarshal(data, &input) != nil || input == nil {
 		return fail("请选择大乐透或双色球")
@@ -133,7 +133,7 @@ func NormalizeBet(data []byte, now time.Time) (Payload, error) {
 		if string(raw) == "null" || json.Unmarshal(raw, &value) != nil {
 			return fail("投注时间必须使用带时区的 ISO 日期时间")
 		}
-		v, e := parseInstant(value, 400)
+		v, e := ParseInstant(value, 400)
 		if e != nil {
 			return Payload{}, e
 		}
@@ -142,7 +142,7 @@ func NormalizeBet(data []byte, now time.Time) (Payload, error) {
 	if placed.UnixMilli() > now.UnixMilli() {
 		return fail("投注时间不能晚于当前时间")
 	}
-	p.PlacedAt = formatInstant(placed)
+	p.PlacedAt = FormatInstant(placed)
 	for i := 1; i < len(p.Issues); i++ {
 		if p.Issues[i] == p.Issues[i-1] {
 			return fail("投注期号不能重复")
@@ -167,7 +167,7 @@ func NormalizeBet(data []byte, now time.Time) (Payload, error) {
 		if string(raw) == "null" || json.Unmarshal(raw, &note) != nil || len(utf16.Encode([]rune(note))) > 200 {
 			return fail("备注最多 200 个字符")
 		}
-		p.Note = domainTrim(note)
+		p.Note = Trim(note)
 	}
 	if appendBet && game == "ssq" {
 		return fail("双色球不支持追加投注")
@@ -197,7 +197,7 @@ func NormalizeBet(data []byte, now time.Time) (Payload, error) {
 func safeNumber(n float64) bool {
 	return !math.IsNaN(n) && !math.IsInf(n, 0) && math.Trunc(n) == n && math.Abs(n) <= float64(MaxSafeInteger)
 }
-func domainTrim(s string) string {
+func Trim(s string) string {
 	return strings.Trim(s, "\t\n\v\f\r \u00a0\u1680\u2000\u2001\u2002\u2003\u2004\u2005\u2006\u2007\u2008\u2009\u200a\u2028\u2029\u202f\u205f\u3000\ufeff")
 }
 func choose(n, k int) float64 {
@@ -237,21 +237,21 @@ func domainPrizeLevel(game, issue string, f, b int) int {
 	}
 	return old[key]
 }
-func domainCents(v *float64) (*float64, error) {
+func Cents(v *float64) (*float64, error) {
 	if v == nil {
 		return nil, nil
 	}
 	c := math.Round(*v * 100)
 	if *v < 0 || !safeNumber(c) {
-		return nil, appError(502, "开奖奖金超出支持范围")
+		return nil, NewError(502, "开奖奖金超出支持范围")
 	}
 	return &c, nil
 }
-func amountPointer(v float64) *float64 { return &v }
+func AmountPointer(v float64) *float64 { return &v }
 func CheckTicket(ticket Ticket, draw Draw, config Config) (TicketResult, error) {
 	spec, ok := domainGames[draw.Game]
 	if !ok {
-		return TicketResult{}, appError(502, "开奖彩种无效")
+		return TicketResult{}, NewError(502, "开奖彩种无效")
 	}
 	r := TicketResult{Winners: []Winner{}, Complete: true}
 	for _, n := range ticket.Front {
@@ -292,13 +292,13 @@ func CheckTicket(ticket Ticket, draw Draw, config Config) (TicketResult, error) 
 	known := 0.0
 	for _, level := range keys {
 		count := levels[level]
-		base, e := domainCents(draw.Prizes[level])
+		base, e := Cents(draw.Prizes[level])
 		if e != nil {
 			return TicketResult{}, e
 		}
-		extra := amountPointer(0)
+		extra := AmountPointer(0)
 		if config.Append && draw.Game == "dlt" && level <= 2 {
-			extra, e = domainCents(draw.AppendPrizes[level])
+			extra, e = Cents(draw.AppendPrizes[level])
 			if e != nil {
 				return TicketResult{}, e
 			}
@@ -307,26 +307,26 @@ func CheckTicket(ticket Ticket, draw Draw, config Config) (TicketResult, error) 
 		unit := 0.0
 		if base != nil {
 			unit += *base
-			w.UnitAmount = amountPointer(*base / 100)
+			w.UnitAmount = AmountPointer(*base / 100)
 		}
 		if extra != nil {
 			unit += *extra
-			w.AppendUnitAmount = amountPointer(*extra / 100)
+			w.AppendUnitAmount = AmountPointer(*extra / 100)
 		}
 		if base == nil || extra == nil {
 			r.Complete = false
 		} else {
-			w.Amount = amountPointer(unit * count / 100)
+			w.Amount = AmountPointer(unit * count / 100)
 		}
 		known += unit * count
 		if !safeNumber(known) {
-			return TicketResult{}, appError(400, "中奖金额超出安全精度")
+			return TicketResult{}, NewError(400, "中奖金额超出安全精度")
 		}
 		r.Winners = append(r.Winners, w)
 	}
 	r.KnownAmount = known / 100
 	if r.Complete {
-		r.Amount = amountPointer(r.KnownAmount)
+		r.Amount = AmountPointer(r.KnownAmount)
 	}
 	return r, nil
 }
@@ -344,11 +344,11 @@ func Evaluate(bet Bet, draw Draw) (Result, error) {
 		r.Won = r.Won || len(v.Winners) > 0
 	}
 	if !safeNumber(known) {
-		return Result{}, appError(400, "中奖金额超出安全精度")
+		return Result{}, NewError(400, "中奖金额超出安全精度")
 	}
 	r.KnownAmount = known / 100
 	if r.Complete {
-		r.Amount = amountPointer(r.KnownAmount)
+		r.Amount = AmountPointer(r.KnownAmount)
 	}
 	return r, nil
 }

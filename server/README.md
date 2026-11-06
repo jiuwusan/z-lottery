@@ -128,7 +128,7 @@ WantedBy=multi-user.target
 
 - [大乐透现行规则](https://m.lottery.gov.cn/ksjz/m/yxgz_dlt/)、[19019 期起规则公告](https://sport.jining.gov.cn/art/2019/5/31/art_3807_1508029.html) 与 [官方计算器及 26014 期规则切换说明](https://m.lottery.gov.cn/mltsz/jsq/index.html)。19019～26013 期使用九奖级，26014 期起使用七奖级。
 - [双色球游戏规则（湖南省民政厅发布）](https://mzt.hunan.gov.cn/mzt/fc/xwzxfc/tzggfc/202601/33894962/files/9b6723ae4d8743099b90d5edfe7d39ea.pdf)。
-- 官方数据源使用福彩与体彩接口，适配实现见 `internal/lottery/provider.go`，日期模式完整分页读取历史开奖及奖金；兼容模式查询明确期号。大乐透销售截止规则见 [体彩官方时间调整公告](https://m.lottery.gov.cn/xxgk/tzggz/20221220/10027143.html)。
+- 官方数据源使用福彩与体彩接口，适配实现见 `internal/gateway/provider.go`，日期模式完整分页读取历史开奖及奖金；兼容模式查询明确期号。大乐透销售截止规则见 [体彩官方时间调整公告](https://m.lottery.gov.cn/xxgk/tzggz/20221220/10027143.html)。
 
 复式用命中与未命中号码的组合数统计各单式奖级，避免展开大量组合；每个单式只计最高奖级，但一组复式可以同时中多个奖级。倍数放大中奖注数；大乐透追加只参与一、二等奖，读取官方追加单注金额，不按浮点数乘 0.8 猜测取整。奖金使用分为单位检查安全精度。
 

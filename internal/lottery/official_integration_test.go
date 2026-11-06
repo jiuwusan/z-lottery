@@ -6,6 +6,8 @@ import (
 	"log/slog"
 	"testing"
 	"time"
+
+	"github.com/jiuwusan/z-lottery/internal/domain"
 )
 
 func TestOfficialCompletionStopsHTTPWithManyFutureBetsAcrossPages(t *testing.T) {
@@ -21,7 +23,7 @@ func TestOfficialCompletionStopsHTTPWithManyFutureBetsAcrossPages(t *testing.T) 
 	if firstCalls != 1 || f.calls["ssq"] != 1 {
 		t.Fatal("per-page upstream duplicated", f.calls)
 	}
-	page, e := s.Repository.List(ListOptions{Page: 1, PageSize: 50})
+	page, e := s.Repository.List(domain.ListOptions{Page: 1, PageSize: 50})
 	if e != nil || page.Total != 41 {
 		t.Fatal(page, e)
 	}
@@ -63,7 +65,7 @@ func TestOfficialMissingUnheldGradeKeepsPollingEvenWhenBetIsComplete(t *testing.
 	if f.calls["dlt"] != 2 {
 		t.Fatal("bet completion incorrectly stopped official polling", f.calls)
 	}
-	d.Prizes[7] = amountPointer(5)
+	d.Prizes[7] = domain.AmountPointer(5)
 	f.snapshots["dlt"] = readySnapshot(d)
 	s.Check(context.Background(), "", 20)
 	s.Check(context.Background(), "", 20)
@@ -81,14 +83,14 @@ func TestOfficialPublishedListCheckedOutsideBettingDateRange(t *testing.T) {
 	older := fullOfficial("dlt", "26124", "2026-10-31")
 	older.Prizes[7] = nil
 	snapshot := f.snapshots["dlt"]
-	snapshot.Published = []Draw{*snapshot.Latest, older}
+	snapshot.Published = []domain.Draw{*snapshot.Latest, older}
 	f.snapshots["dlt"] = snapshot
 	runOfficial(t, s)
 	runOfficial(t, s)
 	if f.calls["dlt"] != 2 {
 		t.Fatal("older listed amount ignored", f.calls)
 	}
-	older.Prizes[7] = amountPointer(5)
+	older.Prizes[7] = domain.AmountPointer(5)
 	snapshot.Published[1] = older
 	f.snapshots["dlt"] = snapshot
 	runOfficial(t, s)

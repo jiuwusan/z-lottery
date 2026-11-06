@@ -10,13 +10,16 @@ import (
 	"strings"
 	"testing"
 	"testing/fstest"
+
+	"github.com/jiuwusan/z-lottery/internal/domain"
+	"github.com/jiuwusan/z-lottery/internal/httpapi"
 )
 
 func TestHTTPCompatibleCRUDAndNoExternalJob(t *testing.T) {
 	r := testRepo(t)
 	s := NewService(r, fakeProvider{})
 	assets := fstest.MapFS{"index.html": {Data: []byte("<html>lottery</html>")}, "app.js": {Data: []byte("app")}}
-	server := httptest.NewServer(NewHTTPHandler(s, fs.FS(assets)))
+	server := httptest.NewServer(httpapi.NewHTTPHandler(s, fs.FS(assets)))
 	defer server.Close()
 	request := func(method, path, raw string, code int) []byte {
 		t.Helper()
@@ -36,7 +39,7 @@ func TestHTTPCompatibleCRUDAndNoExternalJob(t *testing.T) {
 		return body
 	}
 	raw := request("POST", "/api/bets", issueInput, 201)
-	var b Bet
+	var b domain.Bet
 	if e := json.Unmarshal(raw, &b); e != nil || b.TotalAmount != 2 {
 		t.Fatal(string(raw), e)
 	}

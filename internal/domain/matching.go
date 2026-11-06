@@ -1,4 +1,4 @@
-package lottery
+package domain
 
 import (
 	"reflect"
@@ -13,19 +13,19 @@ import (
 var instantPattern = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}T[0-9]{2}:[0-9]{2}(?::[0-9]{2}(?:\.[0-9]{1,3})?)?(?:Z|[+-][0-9]{2}:[0-9]{2})$`)
 var datePattern = regexp.MustCompile(`^[0-9]{4}-[0-9]{2}-[0-9]{2}$`)
 
-func formatInstant(t time.Time) string { return t.UTC().Format("2006-01-02T15:04:05.000Z") }
-func parseDate(s string, status int) (time.Time, error) {
+func FormatInstant(t time.Time) string { return t.UTC().Format("2006-01-02T15:04:05.000Z") }
+func ParseDate(s string, status int) (time.Time, error) {
 	t, e := time.Parse("2006-01-02", s)
 	if !datePattern.MatchString(s) || e != nil || t.Format("2006-01-02") != s {
-		return time.Time{}, appError(status, "日期格式无效")
+		return time.Time{}, NewError(status, "日期格式无效")
 	}
 	return t, nil
 }
-func parseInstant(s string, status int) (time.Time, error) {
+func ParseInstant(s string, status int) (time.Time, error) {
 	if !instantPattern.MatchString(s) {
-		return time.Time{}, appError(status, "投注时间必须使用带时区的 ISO 日期时间")
+		return time.Time{}, NewError(status, "投注时间必须使用带时区的 ISO 日期时间")
 	}
-	if _, e := parseDate(s[:10], status); e != nil {
+	if _, e := ParseDate(s[:10], status); e != nil {
 		return time.Time{}, e
 	}
 	// JavaScript accepts minute-only instants and 24:00 as the next midnight.
@@ -36,7 +36,7 @@ func parseInstant(s string, status int) (time.Time, error) {
 		zoneHour, _ := strconv.Atoi(value[end+1 : end+3])
 		zoneMinute, _ := strconv.Atoi(value[end+4:])
 		if zoneHour > 23 || zoneMinute > 59 {
-			return time.Time{}, appError(status, "日期时间无效")
+			return time.Time{}, NewError(status, "日期时间无效")
 		}
 	}
 	clock := value[11:end]
@@ -47,14 +47,14 @@ func parseInstant(s string, status int) (time.Time, error) {
 	nextDay := false
 	if strings.HasPrefix(clock, "24:00:00") {
 		if clock != "24:00:00" && strings.Trim(clock[8:], ".0") != "" {
-			return time.Time{}, appError(status, "日期时间无效")
+			return time.Time{}, NewError(status, "日期时间无效")
 		}
 		value = value[:11] + "00" + value[13:]
 		nextDay = true
 	}
 	t, e := time.Parse(time.RFC3339Nano, value)
 	if e != nil {
-		return time.Time{}, appError(status, "日期时间无效")
+		return time.Time{}, NewError(status, "日期时间无效")
 	}
 	if nextDay {
 		t = t.AddDate(0, 0, 1)
@@ -70,39 +70,39 @@ func ShanghaiDate(t time.Time) string {
 }
 func SalesCloseAt(draw Draw) (string, error) {
 	if draw.SalesCloseAt != "" {
-		t, e := parseInstant(draw.SalesCloseAt, 502)
+		t, e := ParseInstant(draw.SalesCloseAt, 502)
 		if e != nil {
 			return "", e
 		}
-		return formatInstant(t), nil
+		return FormatInstant(t), nil
 	}
-	if _, e := parseDate(draw.Date, 502); e != nil {
+	if _, e := ParseDate(draw.Date, 502); e != nil {
 		return "", e
 	}
 	hour := "20"
 	if draw.Game == "dlt" && draw.Date >= "2023-01-01" {
 		hour = "21"
 	}
-	t, e := parseInstant(draw.Date+"T"+hour+":00:00+08:00", 502)
+	t, e := ParseInstant(draw.Date+"T"+hour+":00:00+08:00", 502)
 	if e != nil {
 		return "", e
 	}
-	return formatInstant(t), nil
+	return FormatInstant(t), nil
 }
 func SelectDraws(game, placedAt string, periods int, draws []Draw) ([]Draw, error) {
 	if (game != "dlt" && game != "ssq") || periods < 1 || periods > 100 {
-		return nil, appError(400, "彩种或连续期数无效")
+		return nil, NewError(400, "彩种或连续期数无效")
 	}
-	placed, e := parseInstant(placedAt, 400)
+	placed, e := ParseInstant(placedAt, 400)
 	if e != nil {
 		return nil, e
 	}
 	byIssue := map[string]Draw{}
 	for _, draw := range draws {
 		if draw.Game != game {
-			return nil, appError(502, "历史开奖彩种不一致")
+			return nil, NewError(502, "历史开奖彩种不一致")
 		}
-		if _, e := parseDate(draw.Date, 502); e != nil {
+		if _, e := ParseDate(draw.Date, 502); e != nil {
 			return nil, e
 		}
 		close, e := SalesCloseAt(draw)
@@ -111,7 +111,7 @@ func SelectDraws(game, placedAt string, periods int, draws []Draw) ([]Draw, erro
 		}
 		draw.SalesCloseAt = close
 		if previous, exists := byIssue[draw.Issue]; exists && !reflect.DeepEqual(previous, draw) {
-			return nil, appError(502, "同一期历史开奖数据冲突")
+			return nil, NewError(502, "同一期历史开奖数据冲突")
 		}
 		byIssue[draw.Issue] = draw
 	}
@@ -127,7 +127,7 @@ func SelectDraws(game, placedAt string, periods int, draws []Draw) ([]Draw, erro
 	})
 	result := []Draw{}
 	for _, d := range rows {
-		close, _ := parseInstant(d.SalesCloseAt, 502)
+		close, _ := ParseInstant(d.SalesCloseAt, 502)
 		if close.After(placed) {
 			result = append(result, d)
 			if len(result) == periods {

@@ -3,6 +3,8 @@ package lottery
 import (
 	"context"
 	"time"
+
+	"github.com/jiuwusan/z-lottery/internal/domain"
 )
 
 // OfficialWindowDate keeps the midnight retry in the preceding evening's window.
@@ -21,13 +23,13 @@ func OfficialWindowDate(now time.Time) string {
 // Official publication state controls polling; pending future bets only read cache.
 func (s *Service) syncOfficial(ctx context.Context) []CheckError {
 	failures := []CheckError{}
-	provider, ok := s.Provider.(SnapshotProvider)
+	provider, ok := s.Provider.(domain.SnapshotProvider)
 	if !ok {
 		return []CheckError{{Game: "dlt", Message: "开奖来源不支持官方发布状态同步"}, {Game: "ssq", Message: "开奖来源不支持官方发布状态同步"}}
 	}
 	now := s.Clock()
 	window := OfficialWindowDate(now)
-	today := ShanghaiDate(now)
+	today := domain.ShanghaiDate(now)
 	for _, game := range []string{"dlt", "ssq"} {
 		if ctx.Err() != nil {
 			break
@@ -54,7 +56,7 @@ func (s *Service) syncOfficial(ctx context.Context) []CheckError {
 		latestIssue := ""
 		latestReady := false
 		hasUnready := false
-		var latest *Draw
+		var latest *domain.Draw
 		seen := map[string]bool{}
 		from, through := state.HistoryFrom, state.HistoryThrough
 		snapshotOK := false
@@ -75,7 +77,7 @@ func (s *Service) syncOfficial(ctx context.Context) []CheckError {
 			} else {
 				latestIssue, latestReady, latest = snapshot.LatestIssue, snapshot.LatestReady, snapshot.Latest
 				hasUnready = snapshot.HasUnready
-				draws := append([]Draw{}, snapshot.Published...)
+				draws := append([]domain.Draw{}, snapshot.Published...)
 				draws = append(draws, snapshot.Draws...)
 				if latest != nil {
 					draws = append(draws, *latest)
@@ -112,7 +114,7 @@ func (s *Service) syncOfficial(ctx context.Context) []CheckError {
 					latestIssue, latest = d.Issue, &d
 				}
 			}
-			latestReady = latest != nil && OfficialAmountsComplete(*latest)
+			latestReady = latest != nil && domain.OfficialAmountsComplete(*latest)
 		} else if latestIssue == "" {
 			for _, d := range cached {
 				if d.Issue > latestIssue {
@@ -126,10 +128,10 @@ func (s *Service) syncOfficial(ctx context.Context) []CheckError {
 			continue
 		}
 		refresh := map[string]bool{}
-		byIssue := map[string]Draw{}
+		byIssue := map[string]domain.Draw{}
 		for _, d := range cached {
 			byIssue[d.Issue] = d
-			if !OfficialAmountsComplete(d) {
+			if !domain.OfficialAmountsComplete(d) {
 				refresh[d.Issue] = true
 			}
 		}
@@ -157,12 +159,12 @@ func (s *Service) syncOfficial(ctx context.Context) []CheckError {
 				// backfill, without reopening completed latest-window polling.
 				continue
 			}
-			normalized, e := NormalizeIssue(d.Game, d.Issue)
+			normalized, e := domain.NormalizeIssue(d.Game, d.Issue)
 			if e != nil || d.Game != game || normalized != issue {
-				record(issue, appError(502, "开奖期号与请求不一致"))
+				record(issue, domain.NewError(502, "开奖期号与请求不一致"))
 				continue
 			}
-			if e = s.Repository.SaveOfficialSnapshot(game, window, from, through, []Draw{*d}, false); e != nil {
+			if e = s.Repository.SaveOfficialSnapshot(game, window, from, through, []domain.Draw{*d}, false); e != nil {
 				record(issue, e)
 				continue
 			}
@@ -181,9 +183,9 @@ func (s *Service) syncOfficial(ctx context.Context) []CheckError {
 		}
 		// The published official list is authoritative. A new polling window
 		// does not imply that the lottery must announce a new issue that day.
-		complete := !gameFailed && !hasUnready && latestReady && latest != nil && OfficialAmountsComplete(*latest)
+		complete := !gameFailed && !hasUnready && latestReady && latest != nil && domain.OfficialAmountsComplete(*latest)
 		for _, d := range cached {
-			if !OfficialAmountsComplete(d) {
+			if !domain.OfficialAmountsComplete(d) {
 				complete = false
 				break
 			}

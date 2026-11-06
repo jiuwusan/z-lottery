@@ -1,6 +1,8 @@
 package assets
 
-import "embed"
+import (
+	"embed"
+)
 
 // Files contains only the public assets, never the service or database files.
 //

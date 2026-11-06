@@ -1,4 +1,8 @@
-package lottery
+package domain
+
+import (
+	"context"
+)
 
 const MaxSafeInteger int64 = 9007199254740991
 
@@ -8,7 +12,7 @@ type AppError struct {
 }
 
 func (e *AppError) Error() string               { return e.Message }
-func appError(status int, message string) error { return &AppError{Message: message, Status: status} }
+func NewError(status int, message string) error { return &AppError{Message: message, Status: status} }
 
 type Config struct {
 	Game      string `json:"game"`
@@ -79,4 +83,68 @@ type Result struct {
 	KnownAmount float64        `json:"knownAmount"`
 	Amount      *float64       `json:"amount"`
 	CheckedAt   string         `json:"checkedAt,omitempty"`
+}
+
+type ListOptions struct {
+	Page, PageSize int
+	Game, Status   string
+}
+type BetPage struct {
+	Items    []Bet `json:"items"`
+	Total    int   `json:"total"`
+	Page     int   `json:"page"`
+	PageSize int   `json:"pageSize"`
+}
+type PendingTask struct {
+	ID                         int64
+	Game, Issue, PlacedAt, Key string
+}
+type Evaluation struct {
+	ID     int64
+	Result Result
+}
+
+type SyncState struct {
+	Game, WindowDate, HistoryFrom, HistoryThrough string
+	Complete                                      bool
+}
+
+type Provider interface {
+	GetDraw(context.Context, string, string) (*Draw, error)
+	GetHistory(context.Context, string, string, string) ([]Draw, error)
+}
+type OfficialSnapshot struct {
+	Draws                   []Draw
+	Published               []Draw
+	HasUnready              bool
+	Latest                  *Draw
+	LatestIssue, LatestDate string
+	LatestReady             bool
+}
+
+// SnapshotProvider adds official publication state without changing the
+// legacy provider contract used by local consumers and existing integrations.
+type SnapshotProvider interface {
+	GetSnapshot(context.Context, string, string, string) (OfficialSnapshot, error)
+}
+
+func OfficialAmountsComplete(draw Draw) bool {
+	levels := 6
+	switch draw.Game {
+	case "ssq":
+	case "dlt":
+		levels = 7
+		if draw.Issue < "26014" {
+			levels = 9
+		}
+	default:
+		return false
+	}
+	complete := func(amount *float64) bool { cents, err := Cents(amount); return err == nil && cents != nil }
+	for level := 1; level <= levels; level++ {
+		if !complete(draw.Prizes[level]) {
+			return false
+		}
+	}
+	return draw.Game != "dlt" || complete(draw.AppendPrizes[1]) && complete(draw.AppendPrizes[2])
 }

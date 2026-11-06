@@ -1,40 +1,37 @@
-package lottery
+package repository
 
 import (
 	"database/sql"
 	"encoding/json"
 	"time"
+
+	"github.com/jiuwusan/z-lottery/internal/domain"
 )
 
 // Official synchronization and history coverage belong to the shared draw cache,
 // never to a bettor's configured number of future periods.
-type SyncState struct {
-	Game, WindowDate, HistoryFrom, HistoryThrough string
-	Complete                                      bool
-}
-
-func (r *Repository) SyncState(game string) (SyncState, error) {
+func (r *Repository) SyncState(game string) (domain.SyncState, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	s := SyncState{Game: game}
+	s := domain.SyncState{Game: game}
 	err := r.db.QueryRow("SELECT window_date,complete,history_from,history_through FROM draw_sync WHERE game=?", game).Scan(&s.WindowDate, &s.Complete, &s.HistoryFrom, &s.HistoryThrough)
 	if err == sql.ErrNoRows {
 		return s, nil
 	}
 	return s, err
 }
-func cacheOfficial(q queryer, draw Draw) error {
+func cacheOfficial(q queryer, draw domain.Draw) error {
 	var old string
 	err := q.QueryRow("SELECT payload FROM draws WHERE game=? AND issue=?", draw.Game, draw.Issue).Scan(&old)
 	if err != nil && err != sql.ErrNoRows {
 		return err
 	}
 	if err == nil {
-		var existing Draw
+		var existing domain.Draw
 		if err = json.Unmarshal([]byte(old), &existing); err != nil {
 			return err
 		}
-		if OfficialAmountsComplete(existing) {
+		if domain.OfficialAmountsComplete(existing) {
 			return nil
 		}
 	}
@@ -45,13 +42,13 @@ func cacheOfficial(q queryer, draw Draw) error {
 	_, err = q.Exec(`INSERT INTO draws(game,issue,payload,updated_at) VALUES(?,?,?,?) ON CONFLICT(game,issue) DO UPDATE SET payload=excluded.payload,updated_at=excluded.updated_at`, draw.Game, draw.Issue, string(raw), time.Now().UTC().Format("2006-01-02T15:04:05.000Z"))
 	return err
 }
-func (r *Repository) SaveOfficialSnapshot(game, window, from, through string, draws []Draw, complete bool) error {
+func (r *Repository) SaveOfficialSnapshot(game, window, from, through string, draws []domain.Draw, complete bool) error {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	return r.transaction(func(tx *sql.Tx) error {
 		for _, draw := range draws {
 			if draw.Game != game {
-				return appError(502, "官方同步彩种不一致")
+				return domain.NewError(502, "官方同步彩种不一致")
 			}
 			if err := cacheOfficial(tx, draw); err != nil {
 				return err
@@ -61,7 +58,7 @@ func (r *Repository) SaveOfficialSnapshot(game, window, from, through string, dr
 		return err
 	})
 }
-func (r *Repository) CachedDraw(game, issue string) (*Draw, error) {
+func (r *Repository) CachedDraw(game, issue string) (*domain.Draw, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	var raw string
@@ -72,13 +69,13 @@ func (r *Repository) CachedDraw(game, issue string) (*Draw, error) {
 	if err != nil {
 		return nil, err
 	}
-	var draw Draw
+	var draw domain.Draw
 	if err = json.Unmarshal([]byte(raw), &draw); err != nil {
 		return nil, err
 	}
 	return &draw, nil
 }
-func (r *Repository) CachedDraws(game string) ([]Draw, error) {
+func (r *Repository) CachedDraws(game string) ([]domain.Draw, error) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	rows, err := r.db.Query("SELECT payload FROM draws WHERE game=? ORDER BY json_extract(payload,'$.date'),issue", game)
@@ -86,13 +83,13 @@ func (r *Repository) CachedDraws(game string) ([]Draw, error) {
 		return nil, err
 	}
 	defer rows.Close()
-	draws := []Draw{}
+	draws := []domain.Draw{}
 	for rows.Next() {
 		var raw string
 		if err = rows.Scan(&raw); err != nil {
 			return nil, err
 		}
-		var draw Draw
+		var draw domain.Draw
 		if err = json.Unmarshal([]byte(raw), &draw); err != nil {
 			return nil, err
 		}
@@ -114,7 +111,7 @@ func (r *Repository) RequiredHistoryFrom(game string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	return ShanghaiDate(at), nil
+	return domain.ShanghaiDate(at), nil
 }
 func (r *Repository) PendingExplicitIssues(game string) ([]string, error) {
 	r.mu.Lock()

@@ -213,3 +213,11 @@ go vet ./...
 ```
 
 Linux CI 还运行 `go test -race ./...`，需要启用 CGO 和 C 编译器；生产镜像使用 `CGO_ENABLED=0`。`go test ./...` 覆盖 CLI、服务和浏览器选号逻辑；浏览器源码由纯 Go 的 goja 引擎直接执行，测试无需外部 JavaScript 运行时。
+
+## 架构与开发规范
+
+职责与包依赖见 [项目架构](docs/architecture.md)，开发、测试、安全、部署/备份和交付要求见 [开发规范](docs/development.md)。统一质量检查：
+
+```sh
+go run ./tools/check
+```

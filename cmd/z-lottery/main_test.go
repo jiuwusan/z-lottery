@@ -1,6 +1,8 @@
 package main
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestConfigurationDefaultsAndInvalidValues(t *testing.T) {
 	t.Setenv("HOST", "127.0.0.1")

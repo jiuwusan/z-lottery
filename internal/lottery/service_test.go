@@ -2,19 +2,23 @@ package lottery
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/jiuwusan/z-lottery/internal/domain"
+	"github.com/jiuwusan/z-lottery/internal/repository"
 )
 
 type fakeProvider struct {
-	draw     func(context.Context, string, string) (*Draw, error)
-	history  func(context.Context, string, string, string) ([]Draw, error)
-	snapshot func(context.Context, string, string, string) (OfficialSnapshot, error)
+	draw     func(context.Context, string, string) (*domain.Draw, error)
+	history  func(context.Context, string, string, string) ([]domain.Draw, error)
+	snapshot func(context.Context, string, string, string) (domain.OfficialSnapshot, error)
 }
 
-func (p fakeProvider) GetDraw(c context.Context, g, i string) (*Draw, error) {
+func (p fakeProvider) GetDraw(c context.Context, g, i string) (*domain.Draw, error) {
 	if p.draw == nil {
 		return nil, nil
 	}
@@ -25,14 +29,14 @@ func (p fakeProvider) GetDraw(c context.Context, g, i string) (*Draw, error) {
 	}
 	return d, err
 }
-func (p fakeProvider) GetHistory(c context.Context, g, f, u string) ([]Draw, error) {
+func (p fakeProvider) GetHistory(c context.Context, g, f, u string) ([]domain.Draw, error) {
 	if p.history == nil {
-		return []Draw{}, nil
+		return []domain.Draw{}, nil
 	}
 	return p.history(c, g, f, u)
 }
 
-func serviceOfficialFixture(draw Draw) Draw {
+func serviceOfficialFixture(draw domain.Draw) domain.Draw {
 	prizes := map[int]*float64{}
 	for level, value := range draw.Prizes {
 		prizes[level] = value
@@ -53,8 +57,8 @@ func serviceOfficialFixture(draw Draw) Draw {
 	return draw
 }
 
-func serviceSnapshotFixture(draws []Draw) OfficialSnapshot {
-	snapshot := OfficialSnapshot{Draws: []Draw{}}
+func serviceSnapshotFixture(draws []domain.Draw) domain.OfficialSnapshot {
+	snapshot := domain.OfficialSnapshot{Draws: []domain.Draw{}}
 	for _, draw := range draws {
 		draw = serviceOfficialFixture(draw)
 		snapshot.Draws = append(snapshot.Draws, draw)
@@ -66,13 +70,13 @@ func serviceSnapshotFixture(draws []Draw) OfficialSnapshot {
 	return snapshot
 }
 
-func (p fakeProvider) GetSnapshot(c context.Context, g, f, u string) (OfficialSnapshot, error) {
+func (p fakeProvider) GetSnapshot(c context.Context, g, f, u string) (domain.OfficialSnapshot, error) {
 	if p.snapshot != nil {
 		return p.snapshot(c, g, f, u)
 	}
 	if g == "ssq" {
-		draw := Draw{Game: "ssq", Issue: "2026125", Date: "2026-11-02", Front: []int{1, 2, 3, 4, 5, 6}, Back: []int{1}, Prizes: map[int]*float64{1: testAmount(0)}}
-		return serviceSnapshotFixture([]Draw{draw}), nil
+		draw := domain.Draw{Game: "ssq", Issue: "2026125", Date: "2026-11-02", Front: []int{1, 2, 3, 4, 5, 6}, Back: []int{1}, Prizes: map[int]*float64{1: testAmount(0)}}
+		return serviceSnapshotFixture([]domain.Draw{draw}), nil
 	}
 	if p.history != nil {
 		draws, err := p.history(c, g, f, u)
@@ -81,43 +85,46 @@ func (p fakeProvider) GetSnapshot(c context.Context, g, f, u string) (OfficialSn
 	if p.draw != nil {
 		draw, err := p.draw(c, g, "26125")
 		if err != nil {
-			return OfficialSnapshot{}, err
+			return domain.OfficialSnapshot{}, err
 		}
 		if draw != nil {
-			return serviceSnapshotFixture([]Draw{*draw}), nil
+			return serviceSnapshotFixture([]domain.Draw{*draw}), nil
 		}
 	}
-	return OfficialSnapshot{Draws: []Draw{}}, nil
+	return domain.OfficialSnapshot{Draws: []domain.Draw{}}, nil
 }
 
-func serviceFixture(r *Repository, p Provider) *Service {
+func serviceFixture(r *repository.Repository, p domain.Provider) *Service {
 	s := NewService(r, p)
 	s.Clock = func() time.Time { return time.Date(2026, 11, 3, 0, 0, 0, 0, time.UTC) }
 	return s
 }
-func testRepo(t *testing.T) *Repository {
+func testRepo(t *testing.T) *repository.Repository {
 	t.Helper()
-	r, e := OpenRepository(":memory:")
+	r, e := testOpenRepository(t, ":memory:")
 	if e != nil {
 		t.Fatal(e)
 	}
 	t.Cleanup(func() { r.Close() })
 	return r
 }
-func fixtureDraw(issue string, complete bool) Draw {
+func fixtureDraw(issue string, complete bool) domain.Draw {
 	amount := 1000000.0
 	prices := map[int]*float64{}
 	if complete {
 		prices[1] = &amount
 	}
-	return Draw{Game: "dlt", Issue: issue, Date: "2026-11-02", Front: []int{1, 2, 3, 4, 5}, Back: []int{1, 2}, Prizes: prices, AppendPrizes: map[int]*float64{}}
+	return domain.Draw{Game: "dlt", Issue: issue, Date: "2026-11-02", Front: []int{1, 2, 3, 4, 5}, Back: []int{1, 2}, Prizes: prices, AppendPrizes: map[int]*float64{}}
 }
 
 const issueInput = `{"game":"dlt","tickets":[{"front":[1,2,3,4,5],"back":[1,2]}],"issues":["26125"]}`
 
 func TestServiceSameIssueFailureDoesNotBlockHealthyBet(t *testing.T) {
 	r := testRepo(t)
-	p := fakeProvider{draw: func(context.Context, string, string) (*Draw, error) { d := fixtureDraw("26125", true); return &d, nil }}
+	p := fakeProvider{draw: func(context.Context, string, string) (*domain.Draw, error) {
+		d := fixtureDraw("26125", true)
+		return &d, nil
+	}}
 	s := serviceFixture(r, p)
 	createFixture(t, s, `{"game":"dlt","tickets":[{"front":[1,2,3,4,5],"back":[1,2]}],"issues":["26125"],"multiple":10000000000}`)
 	healthy := createFixture(t, s, issueInput)
@@ -131,7 +138,7 @@ func TestServiceSameIssueFailureDoesNotBlockHealthyBet(t *testing.T) {
 	}
 }
 
-func createFixture(t *testing.T, s *Service, raw string) Bet {
+func createFixture(t *testing.T, s *Service, raw string) domain.Bet {
 	t.Helper()
 	b, e := s.Create([]byte(raw))
 	if e != nil {
@@ -144,13 +151,13 @@ func TestServiceRetriesMissingMoneyAndStopsComplete(t *testing.T) {
 	complete := false
 	heldPrizeReady := false
 	calls := 0
-	p := fakeProvider{snapshot: func(_ context.Context, game, _, _ string) (OfficialSnapshot, error) {
+	p := fakeProvider{snapshot: func(_ context.Context, game, _, _ string) (domain.OfficialSnapshot, error) {
 		if game == "ssq" {
 			return (fakeProvider{}).GetSnapshot(context.Background(), game, "", "")
 		}
 		calls++
 		d := fixtureDraw("26125", heldPrizeReady)
-		snapshot := serviceSnapshotFixture([]Draw{d})
+		snapshot := serviceSnapshotFixture([]domain.Draw{d})
 		if !complete {
 			delete(snapshot.Draws[0].Prizes, 7)
 		}
@@ -191,7 +198,7 @@ func TestServiceRetriesMissingMoneyAndStopsComplete(t *testing.T) {
 func TestServicePagesFailuresAndLostCompletion(t *testing.T) {
 	r := testRepo(t)
 	calls := 0
-	p := fakeProvider{draw: func(_ context.Context, _ string, i string) (*Draw, error) {
+	p := fakeProvider{draw: func(_ context.Context, _ string, i string) (*domain.Draw, error) {
 		calls++
 		if i == "26125" {
 			return nil, errors.New("offline")
@@ -201,13 +208,13 @@ func TestServicePagesFailuresAndLostCompletion(t *testing.T) {
 		d.Back = []int{10, 11}
 		return &d, nil
 	}}
-	p.snapshot = func(_ context.Context, game, _, _ string) (OfficialSnapshot, error) {
+	p.snapshot = func(_ context.Context, game, _, _ string) (domain.OfficialSnapshot, error) {
 		if game == "ssq" {
 			return (fakeProvider{}).GetSnapshot(context.Background(), game, "", "")
 		}
 		d := fixtureDraw("26126", true)
 		d.Front, d.Back = []int{20, 21, 22, 23, 24}, []int{10, 11}
-		return serviceSnapshotFixture([]Draw{d}), nil
+		return serviceSnapshotFixture([]domain.Draw{d}), nil
 	}
 	s := serviceFixture(r, p)
 	createFixture(t, s, issueInput)
@@ -231,8 +238,8 @@ func TestServicePagesFailuresAndLostCompletion(t *testing.T) {
 }
 func TestServiceDatePartialKeepsCheckingUntilAllMoneyComplete(t *testing.T) {
 	r := testRepo(t)
-	rows := []Draw{fixtureDraw("26125", true)}
-	p := fakeProvider{history: func(context.Context, string, string, string) ([]Draw, error) { return rows, nil }}
+	rows := []domain.Draw{fixtureDraw("26125", true)}
+	p := fakeProvider{history: func(context.Context, string, string, string) ([]domain.Draw, error) { return rows, nil }}
 	s := serviceFixture(r, p)
 	b := createFixture(t, s, `{"game":"dlt","tickets":[{"front":[1,2,3,4,5],"back":[1,2]}],"periods":2,"placedAt":"2026-11-01T10:00:00+08:00"}`)
 	s.Check(context.Background(), "", 20)
@@ -264,26 +271,29 @@ func TestServiceDatePartialKeepsCheckingUntilAllMoneyComplete(t *testing.T) {
 }
 func TestRepositoryRestartAndLegacyMigration(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "old.sqlite")
-	r, e := OpenRepository(path)
+	r, e := testOpenRepository(t, path)
 	if e != nil {
 		t.Fatal(e)
 	}
 	// Exact schema used before match_mode / placed_at were introduced.
-	r.db.Exec("DROP TABLE results; DROP TABLE bet_issues; DROP TABLE bets; CREATE TABLE bets(id INTEGER PRIMARY KEY AUTOINCREMENT,game TEXT NOT NULL,payload TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT '2026-11-01T00:00:00.000Z')")
+	testSQL(t, r).Exec("DROP TABLE results; DROP TABLE bet_issues; DROP TABLE bets; CREATE TABLE bets(id INTEGER PRIMARY KEY AUTOINCREMENT,game TEXT NOT NULL,payload TEXT NOT NULL,created_at TEXT NOT NULL DEFAULT '2026-11-01T00:00:00.000Z')")
 	payload := `{"config":{"game":"dlt","front":5,"back":2,"count":1,"multiple":1,"periods":1,"append":false},"tickets":[{"front":[1,2,3,4,5],"back":[1,2]}],"issues":["26125"],"note":"旧记录","totalAmount":2,"amountPerPeriod":2}`
-	r.db.Exec("INSERT INTO bets(game,payload) VALUES('dlt',?)", payload)
+	testSQL(t, r).Exec("INSERT INTO bets(game,payload) VALUES('dlt',?)", payload)
 	r.Close()
-	r, e = OpenRepository(path)
+	r, e = testOpenRepository(t, path)
 	if e != nil {
 		t.Fatal(e)
 	}
 	defer r.Close()
-	r.db.Exec("INSERT INTO bet_issues VALUES(1,'26125')")
+	testSQL(t, r).Exec("INSERT INTO bet_issues VALUES(1,'26125')")
 	b, e := r.Get(1)
 	if e != nil || b.MatchMode != "issue" || b.Note != "旧记录" || b.PlacedAt != "2026-11-01T00:00:00.000Z" {
 		t.Fatal(b, e)
 	}
-	s := serviceFixture(r, fakeProvider{draw: func(context.Context, string, string) (*Draw, error) { d := fixtureDraw("26125", true); return &d, nil }})
+	s := serviceFixture(r, fakeProvider{draw: func(context.Context, string, string) (*domain.Draw, error) {
+		d := fixtureDraw("26125", true)
+		return &d, nil
+	}})
 	s.Check(context.Background(), "", 20)
 	b, e = r.Get(1)
 	if e != nil || b.WinAmount == nil {
@@ -293,7 +303,7 @@ func TestRepositoryRestartAndLegacyMigration(t *testing.T) {
 		t.Fatal(e)
 	}
 	var count int
-	r.db.QueryRow("SELECT count(*) FROM results").Scan(&count)
+	testSQL(t, r).QueryRow("SELECT count(*) FROM results").Scan(&count)
 	if count != 0 {
 		t.Fatal("results not cascaded")
 	}
@@ -302,7 +312,7 @@ func TestRepositoryRestartAndLegacyMigration(t *testing.T) {
 func TestServiceCompletedSharedIssueIsNeverRewritten(t *testing.T) {
 	r := testRepo(t)
 	price := 1000000.0
-	s := serviceFixture(r, fakeProvider{draw: func(context.Context, string, string) (*Draw, error) {
+	s := serviceFixture(r, fakeProvider{draw: func(context.Context, string, string) (*domain.Draw, error) {
 		d := fixtureDraw("26125", true)
 		d.Prizes[1] = &price
 		return &d, nil
@@ -324,18 +334,18 @@ func TestRepositoryDatePrefixAndRollback(t *testing.T) {
 	s := NewService(r, fakeProvider{})
 	b := createFixture(t, s, `{"game":"dlt","tickets":[{"front":[1,2,3,4,5],"back":[1,2]}],"periods":2}`)
 	first := fixtureDraw("26125", true)
-	result, _ := Evaluate(b, first)
-	if _, e := r.SaveDateCheck(b.ID, []Draw{first}, []Result{result}); e != nil {
+	result, _ := domain.Evaluate(b, first)
+	if _, e := r.SaveDateCheck(b.ID, []domain.Draw{first}, []domain.Result{result}); e != nil {
 		t.Fatal(e)
 	}
 	conflicting := fixtureDraw("26124", true)
-	if _, e := r.SaveDateCheck(b.ID, []Draw{conflicting}, []Result{result}); e == nil {
+	if _, e := r.SaveDateCheck(b.ID, []domain.Draw{conflicting}, []domain.Result{result}); e == nil {
 		t.Fatal("matched prefix overwritten")
 	}
 	second := fixtureDraw("26126", true)
-	overflow, _ := Evaluate(b, second)
-	overflow.KnownAmount = float64(MaxSafeInteger) / 100
-	if _, e := r.SaveDateCheck(b.ID, []Draw{first, second}, []Result{result, overflow}); e == nil {
+	overflow, _ := domain.Evaluate(b, second)
+	overflow.KnownAmount = float64(domain.MaxSafeInteger) / 100
+	if _, e := r.SaveDateCheck(b.ID, []domain.Draw{first, second}, []domain.Result{result, overflow}); e == nil {
 		t.Fatal("cross-period overflow accepted")
 	}
 	got, _ := r.Get(b.ID)
@@ -343,7 +353,7 @@ func TestRepositoryDatePrefixAndRollback(t *testing.T) {
 		t.Fatalf("transaction did not roll back: %+v", got)
 	}
 	var count int
-	r.db.QueryRow("SELECT count(*) FROM draws WHERE issue='26126'").Scan(&count)
+	testSQL(t, r).QueryRow("SELECT count(*) FROM draws WHERE issue='26126'").Scan(&count)
 	if count != 0 {
 		t.Fatal("draw cache escaped transaction")
 	}
@@ -353,14 +363,14 @@ func TestServiceDeleteWhileFetchingAndRejectOverlap(t *testing.T) {
 	r := testRepo(t)
 	entered := make(chan struct{})
 	release := make(chan struct{})
-	s := serviceFixture(r, fakeProvider{snapshot: func(_ context.Context, game, _, _ string) (OfficialSnapshot, error) {
+	s := serviceFixture(r, fakeProvider{snapshot: func(_ context.Context, game, _, _ string) (domain.OfficialSnapshot, error) {
 		if game == "ssq" {
 			return (fakeProvider{}).GetSnapshot(context.Background(), game, "", "")
 		}
 		close(entered)
 		<-release
 		d := fixtureDraw("26125", true)
-		return serviceSnapshotFixture([]Draw{d}), nil
+		return serviceSnapshotFixture([]domain.Draw{d}), nil
 	}})
 	b := createFixture(t, s, issueInput)
 	done := make(chan error, 1)
@@ -376,7 +386,7 @@ func TestServiceDeleteWhileFetchingAndRejectOverlap(t *testing.T) {
 	if e := <-done; e != nil {
 		t.Fatal(e)
 	}
-	page, e := r.List(ListOptions{Page: 1, PageSize: 10})
+	page, e := r.List(domain.ListOptions{Page: 1, PageSize: 10})
 	if e != nil || page.Total != 0 {
 		t.Fatal(page, e)
 	}
@@ -384,19 +394,19 @@ func TestServiceDeleteWhileFetchingAndRejectOverlap(t *testing.T) {
 
 func TestRepositoryCurrentDateDataPersistsAndFilters(t *testing.T) {
 	filename := filepath.Join(t.TempDir(), "current.sqlite")
-	r, e := OpenRepository(filename)
+	r, e := testOpenRepository(t, filename)
 	if e != nil {
 		t.Fatal(e)
 	}
 	s := NewService(r, fakeProvider{})
 	b := createFixture(t, s, `{"game":"dlt","tickets":[{"front":[1,2,3,4,5],"back":[1,2]}],"periods":2}`)
 	d := fixtureDraw("26125", true)
-	result, _ := Evaluate(b, d)
-	if _, e = r.SaveDateCheck(b.ID, []Draw{d}, []Result{result}); e != nil {
+	result, _ := domain.Evaluate(b, d)
+	if _, e = r.SaveDateCheck(b.ID, []domain.Draw{d}, []domain.Result{result}); e != nil {
 		t.Fatal(e)
 	}
 	r.Close()
-	r, e = OpenRepository(filename)
+	r, e = testOpenRepository(t, filename)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -405,12 +415,38 @@ func TestRepositoryCurrentDateDataPersistsAndFilters(t *testing.T) {
 	if e != nil || got.MatchMode != "date" || got.PlacedAt != b.PlacedAt || got.Status != "partial" || len(got.Results) != 1 {
 		t.Fatal(got, e)
 	}
-	page, e := r.List(ListOptions{Page: 1, PageSize: 1, Game: "dlt", Status: "partial"})
+	page, e := r.List(domain.ListOptions{Page: 1, PageSize: 1, Game: "dlt", Status: "partial"})
 	if e != nil || page.Total != 1 || len(page.Items) != 1 {
 		t.Fatal(page, e)
 	}
-	page, e = r.List(ListOptions{Page: 2, PageSize: 1})
+	page, e = r.List(domain.ListOptions{Page: 2, PageSize: 1})
 	if e != nil || page.Total != 1 || len(page.Items) != 0 {
 		t.Fatal(page, e)
 	}
+}
+
+func testAmount(v float64) *float64 { return &v }
+
+var testRepositoryPaths = map[*repository.Repository]string{}
+
+func testOpenRepository(t *testing.T, filename string) (*repository.Repository, error) {
+	t.Helper()
+	if filename == ":memory:" {
+		filename = filepath.Join(t.TempDir(), "fixture.sqlite")
+	}
+	r, err := repository.OpenRepository(filename)
+	if err == nil {
+		testRepositoryPaths[r] = filename
+		t.Cleanup(func() { delete(testRepositoryPaths, r) })
+	}
+	return r, err
+}
+func testSQL(t *testing.T, r *repository.Repository) *sql.DB {
+	t.Helper()
+	db, err := sql.Open("sqlite", testRepositoryPaths[r])
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { db.Close() })
+	return db
 }

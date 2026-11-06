@@ -33,6 +33,10 @@ jobs:
         with:
           go-version-file: go.mod
 
+      - name: Architecture, formatting and development standards
+        env:
+          GOMAXPROCS: '4'
+        run: go run ./tools/check
       - name: Build, test and vet CLI, browser engine and service
         env:
           CGO_ENABLED: '1'

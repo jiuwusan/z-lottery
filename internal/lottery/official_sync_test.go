@@ -6,34 +6,37 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/jiuwusan/z-lottery/internal/domain"
+	"github.com/jiuwusan/z-lottery/internal/repository"
 )
 
 type syncFake struct {
 	calls      map[string]int
 	exact      map[string]int
 	from       map[string]string
-	snapshots  map[string]OfficialSnapshot
+	snapshots  map[string]domain.OfficialSnapshot
 	failures   map[string]error
-	exactDraws map[string]*Draw
+	exactDraws map[string]*domain.Draw
 }
 
 func newSyncFake() *syncFake {
-	return &syncFake{calls: map[string]int{}, exact: map[string]int{}, from: map[string]string{}, snapshots: map[string]OfficialSnapshot{}, failures: map[string]error{}}
+	return &syncFake{calls: map[string]int{}, exact: map[string]int{}, from: map[string]string{}, snapshots: map[string]domain.OfficialSnapshot{}, failures: map[string]error{}}
 }
-func (f *syncFake) GetSnapshot(_ context.Context, g, from, through string) (OfficialSnapshot, error) {
+func (f *syncFake) GetSnapshot(_ context.Context, g, from, through string) (domain.OfficialSnapshot, error) {
 	f.calls[g]++
 	f.from[g] = from
 	return f.snapshots[g], f.failures[g]
 }
-func (f *syncFake) GetHistory(context.Context, string, string, string) ([]Draw, error) {
+func (f *syncFake) GetHistory(context.Context, string, string, string) ([]domain.Draw, error) {
 	panic("unexpected GetHistory")
 }
-func (f *syncFake) GetDraw(_ context.Context, g, i string) (*Draw, error) {
+func (f *syncFake) GetDraw(_ context.Context, g, i string) (*domain.Draw, error) {
 	f.exact[g+":"+i]++
 	return f.exactDraws[g+":"+i], nil
 }
-func fullOfficial(g, issue, date string) Draw {
-	d := Draw{Game: g, Issue: issue, Date: date, Prizes: map[int]*float64{}, AppendPrizes: map[int]*float64{}}
+func fullOfficial(g, issue, date string) domain.Draw {
+	d := domain.Draw{Game: g, Issue: issue, Date: date, Prizes: map[int]*float64{}, AppendPrizes: map[int]*float64{}}
 	max := 6
 	if g == "dlt" {
 		max = 7
@@ -49,12 +52,12 @@ func fullOfficial(g, issue, date string) Draw {
 	}
 	return d
 }
-func readySnapshot(d Draw) OfficialSnapshot {
-	return OfficialSnapshot{Draws: []Draw{d}, Latest: &d, LatestIssue: d.Issue, LatestDate: d.Date, LatestReady: true}
+func readySnapshot(d domain.Draw) domain.OfficialSnapshot {
+	return domain.OfficialSnapshot{Draws: []domain.Draw{d}, Latest: &d, LatestIssue: d.Issue, LatestDate: d.Date, LatestReady: true}
 }
 func syncService(t *testing.T) (*Service, *syncFake) {
 	t.Helper()
-	r, e := OpenRepository(":memory:")
+	r, e := repository.OpenRepository(":memory:")
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -172,7 +175,7 @@ func TestOfficialHistoricalBackfillOnce(t *testing.T) {
 }
 func TestOfficialRestartPersistsCompletion(t *testing.T) {
 	filename := filepath.Join(t.TempDir(), "official.sqlite")
-	r, e := OpenRepository(filename)
+	r, e := repository.OpenRepository(filename)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -188,7 +191,7 @@ func TestOfficialRestartPersistsCompletion(t *testing.T) {
 	s.Clock = func() time.Time { return time.Date(2026, 11, 2, 14, 0, 0, 0, time.UTC) }
 	runOfficial(t, s)
 	r.Close()
-	r, e = OpenRepository(filename)
+	r, e = repository.OpenRepository(filename)
 	if e != nil {
 		t.Fatal(e)
 	}
@@ -204,11 +207,11 @@ func TestOfficialRefreshesCachedPastWithoutRequestingSnapshotIssues(t *testing.T
 	s, f := syncService(t)
 	old := fullOfficial("dlt", "26124", "2026-11-01")
 	delete(old.Prizes, 7)
-	if e := s.Repository.SaveOfficialSnapshot("dlt", "2026-11-02", "2026-11-01", "2026-11-01", []Draw{old}, false); e != nil {
+	if e := s.Repository.SaveOfficialSnapshot("dlt", "2026-11-02", "2026-11-01", "2026-11-01", []domain.Draw{old}, false); e != nil {
 		t.Fatal(e)
 	}
 	repaired := fullOfficial("dlt", "26124", "2026-11-01")
-	f.exactDraws = map[string]*Draw{"dlt:26124": &repaired}
+	f.exactDraws = map[string]*domain.Draw{"dlt:26124": &repaired}
 	runOfficial(t, s)
 	runOfficial(t, s)
 	if f.calls["dlt"] != 1 || f.exact["dlt:26124"] != 1 || f.exact["dlt:26125"] != 0 {
@@ -230,7 +233,9 @@ func TestOfficialUnsupportedProviderReportsBothGames(t *testing.T) {
 
 type legacyOfficialFake struct{}
 
-func (legacyOfficialFake) GetDraw(context.Context, string, string) (*Draw, error) { return nil, nil }
-func (legacyOfficialFake) GetHistory(context.Context, string, string, string) ([]Draw, error) {
+func (legacyOfficialFake) GetDraw(context.Context, string, string) (*domain.Draw, error) {
+	return nil, nil
+}
+func (legacyOfficialFake) GetHistory(context.Context, string, string, string) ([]domain.Draw, error) {
 	return nil, nil
 }

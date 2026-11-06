@@ -6,6 +6,8 @@ import (
 	"regexp"
 	"sync/atomic"
 	"time"
+
+	"github.com/jiuwusan/z-lottery/internal/domain"
 )
 
 type CheckError struct {
@@ -21,20 +23,39 @@ type CheckReport struct {
 	Errors      []CheckError `json:"errors"`
 	NextCursor  *string      `json:"nextCursor"`
 }
+
+// BetRepository is the storage port required by the application use cases.
+type BetRepository interface {
+	Create(domain.Payload) (domain.Bet, error)
+	List(domain.ListOptions) (domain.BetPage, error)
+	Get(int64) (domain.Bet, error)
+	Remove(int64) error
+	Pending(string, int) ([]domain.PendingTask, error)
+	ForIssue(string, string) ([]domain.Bet, error)
+	SaveCheck(domain.Draw, []domain.Evaluation) error
+	SaveDateCheck(int64, []domain.Draw, []domain.Result) (int, error)
+	SyncState(string) (domain.SyncState, error)
+	SaveOfficialSnapshot(string, string, string, string, []domain.Draw, bool) error
+	CachedDraw(string, string) (*domain.Draw, error)
+	CachedDraws(string) ([]domain.Draw, error)
+	RequiredHistoryFrom(string) (string, error)
+	PendingExplicitIssues(string) ([]string, error)
+}
+
 type Service struct {
-	Repository *Repository
-	Provider   Provider
+	Repository BetRepository
+	Provider   domain.Provider
 	Clock      func() time.Time
 	running    atomic.Bool
 }
 
-func NewService(r *Repository, p Provider) *Service {
+func NewService(r BetRepository, p domain.Provider) *Service {
 	return &Service{Repository: r, Provider: p, Clock: time.Now}
 }
-func (s *Service) Create(raw []byte) (Bet, error) {
-	p, e := NormalizeBet(raw, s.Clock())
+func (s *Service) Create(raw []byte) (domain.Bet, error) {
+	p, e := domain.NormalizeBet(raw, s.Clock())
 	if e != nil {
-		return Bet{}, e
+		return domain.Bet{}, e
 	}
 	return s.Repository.Create(p)
 }
@@ -44,13 +65,13 @@ var cursorPattern = regexp.MustCompile(`^(bet:\d{16}|dlt:\d{5}|ssq:20\d{5})$`)
 func (s *Service) Check(ctx context.Context, after string, limit int) (CheckReport, error) {
 	report := CheckReport{Errors: []CheckError{}}
 	if limit < 1 || limit > 100 {
-		return report, appError(400, "批次数量必须是 1～100 的整数")
+		return report, domain.NewError(400, "批次数量必须是 1～100 的整数")
 	}
 	if after != "" && !cursorPattern.MatchString(after) {
-		return report, appError(400, "无效的验奖游标")
+		return report, domain.NewError(400, "无效的验奖游标")
 	}
 	if !s.running.CompareAndSwap(false, true) {
-		return report, appError(409, "验奖任务正在运行，请稍后重试")
+		return report, domain.NewError(409, "验奖任务正在运行，请稍后重试")
 	}
 	defer s.running.Store(false)
 	if after == "" {
@@ -68,7 +89,7 @@ func (s *Service) Check(ctx context.Context, after string, limit int) (CheckRepo
 		report.NextCursor = &key
 		tasks = tasks[:limit]
 	}
-	cache := map[string][]Draw{}
+	cache := map[string][]domain.Draw{}
 	for _, task := range tasks {
 		if err = ctx.Err(); err != nil {
 			return report, err
@@ -77,7 +98,7 @@ func (s *Service) Check(ctx context.Context, after string, limit int) (CheckRepo
 			if task.ID != 0 {
 				b, e := s.Repository.Get(task.ID)
 				if e != nil {
-					var ae *AppError
+					var ae *domain.AppError
 					if errors.As(e, &ae) && ae.Status == 404 {
 						return nil
 					}
@@ -99,17 +120,17 @@ func (s *Service) Check(ctx context.Context, after string, limit int) (CheckRepo
 				if e != nil {
 					return e
 				}
-				if state.HistoryFrom == "" || ShanghaiDate(placed) < state.HistoryFrom {
+				if state.HistoryFrom == "" || domain.ShanghaiDate(placed) < state.HistoryFrom {
 					report.Waiting++
 					return nil
 				}
-				selected, e := SelectDraws(task.Game, b.PlacedAt, b.Config.Periods, rows)
+				selected, e := domain.SelectDraws(task.Game, b.PlacedAt, b.Config.Periods, rows)
 				if e != nil {
 					return e
 				}
-				results := make([]Result, 0, len(selected))
+				results := make([]domain.Result, 0, len(selected))
 				for _, d := range selected {
-					result, e := Evaluate(b, d)
+					result, e := domain.Evaluate(b, d)
 					if e != nil {
 						return e
 					}
@@ -136,9 +157,9 @@ func (s *Service) Check(ctx context.Context, after string, limit int) (CheckRepo
 				report.Waiting++
 				return nil
 			}
-			issue, e := NormalizeIssue(draw.Game, draw.Issue)
+			issue, e := domain.NormalizeIssue(draw.Game, draw.Issue)
 			if e != nil || draw.Game != task.Game || issue != task.Issue {
-				return appError(502, "开奖期号与请求不一致")
+				return domain.NewError(502, "开奖期号与请求不一致")
 			}
 			bets, e := s.Repository.ForIssue(task.Game, task.Issue)
 			if e != nil {
@@ -146,9 +167,9 @@ func (s *Service) Check(ctx context.Context, after string, limit int) (CheckRepo
 			}
 			updated := 0
 			for _, b := range bets {
-				result, e := Evaluate(b, *draw)
+				result, e := domain.Evaluate(b, *draw)
 				if e == nil {
-					e = s.Repository.SaveCheck(*draw, []Evaluation{{ID: b.ID, Result: result}})
+					e = s.Repository.SaveCheck(*draw, []domain.Evaluation{{ID: b.ID, Result: result}})
 				}
 				if e != nil {
 					report.Errors = append(report.Errors, CheckError{Game: task.Game, BetID: b.ID, Issue: task.Issue, Message: e.Error()})
@@ -171,3 +192,7 @@ func (s *Service) Check(ctx context.Context, after string, limit int) (CheckRepo
 	}
 	return report, nil
 }
+
+func (s *Service) List(o domain.ListOptions) (domain.BetPage, error) { return s.Repository.List(o) }
+func (s *Service) Get(id int64) (domain.Bet, error)                  { return s.Repository.Get(id) }
+func (s *Service) Remove(id int64) error                             { return s.Repository.Remove(id) }

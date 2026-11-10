@@ -126,9 +126,12 @@
       heading.append(element('span', states[bet.status] || bet.status, 'bet-state state-' + bet.status));
       card.append(heading);
       card.append(element('p', `${bet.config.front}+${bet.config.back} · ${bet.config.count} 组 · ${bet.config.multiple}倍${bet.config.append ? '追加' : ''} · ${bet.config.periods} 期`, 'saved-meta'));
+      const amount = element('p', '投注金额：', 'saved-amount');
+      amount.append(element('strong', `${money.format(bet.totalAmount)} 元`));
+      card.append(amount);
       card.append(element('p', bet.matchMode === 'date' ? `投注时间：${time.format(new Date(bet.placedAt))}（北京时间）` : '历史记录 · 按已保存期号验奖', 'saved-meta'));
       card.append(element('p', bet.issues.length ? `已匹配期号：${bet.issues.join('、')}` : '尚无匹配期号，等待实际开奖', 'saved-meta'));
-      card.append(element('p', `投注 ${money.format(bet.totalAmount)} 元 · 已验 ${bet.checkedPeriods}/${bet.config.periods} 期 · ${bet.winAmount === null ? '已知中奖 ' + money.format(bet.knownWinAmount) + ' 元，待全部验奖' : '中奖 ' + money.format(bet.winAmount) + ' 元'}`, 'saved-amount'));
+      card.append(element('p', `已验 ${bet.checkedPeriods}/${bet.config.periods} 期 · ${bet.winAmount === null ? '已知中奖 ' + money.format(bet.knownWinAmount) + ' 元，待全部验奖' : '中奖 ' + money.format(bet.winAmount) + ' 元'}`, 'saved-meta'));
       if (bet.note) card.append(element('p', bet.note, 'saved-note'));
       const details = drawDetails(bet);
       card.append(details);
@@ -147,7 +150,7 @@
           message('浏览器未允许复制，请选中卡片中的号码手动复制。', true);
         }
       });
-      const remove = element('button', '删除', 'delete-button');
+      const remove = element('button', '删除', 'outline-button');
       remove.type = 'button';
       remove.setAttribute('aria-label', `删除投注 #${bet.id}`);
       remove.addEventListener('click', async () => {

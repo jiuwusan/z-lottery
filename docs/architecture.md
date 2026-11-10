@@ -11,7 +11,7 @@
 - internal/repository：SQLite schema、事务、投注与完整开奖缓存、发布同步进度；所有 SQL 和文件路径创建集中于此。
 - internal/gateway：官方开奖 HTTP、分页、响应体限制、校验和安全错误；不决定何时重试官方发布。
 - internal/httpapi：http 路由匹配、参数/方法/大小校验、响应与静态资源；只依赖 domain 和 BetService 端口，不访问数据库字段。net/http 小服务不另建无行为的 routes/controller 包。
-- lottery：Go embed 和原有独立浏览器页面，维持 /、/lottery、资源名称和 CLI 的共享规则。
+- lottery：Go embed 和原有独立浏览器页面，使用相对路径访问静态资源和 API，与 CLI 保持一致的选号规则。Go 服务以根路径提供页面和 API，子目录部署由反向代理剥离路径前缀。
 - internal/architecture：包依赖/纯逻辑约束测试。tools/check 是开发命令，不进入运行服务。
 
 ## 依赖方向

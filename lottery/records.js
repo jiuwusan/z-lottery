@@ -44,7 +44,7 @@
   const lines = tickets => tickets.map(ticket => `${numbers(ticket.front)} + ${numbers(ticket.back)}`).join('\n');
 
   async function request(route, options = {}) {
-    const response = await fetch('/api' + route, {
+    const response = await fetch('./api' + route, {
       ...options, signal: AbortSignal.timeout(15000), headers: {
         ...(options.body ? { 'Content-Type': 'application/json' } : {}),
       },
@@ -52,7 +52,7 @@
     if (response.status === 204) return null;
     let body;
     try { body = await response.json(); }
-    catch { throw new Error('服务未返回 JSON，请检查后端服务和 Nginx /api/ 转发配置'); }
+    catch { throw new Error('服务未返回 JSON，请检查后端服务和 API 转发配置'); }
     if (!response.ok) {
       const error = new Error(body.error || '请求失败，请重试');
       error.status = response.status;

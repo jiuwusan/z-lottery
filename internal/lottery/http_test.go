@@ -16,13 +16,21 @@ import (
 )
 
 func TestHTTPCompatibleCRUDAndNoExternalJob(t *testing.T) {
+	t.Run("root", func(t *testing.T) { testHTTPCompatibleCRUDAndNoExternalJob(t, "") })
+	t.Run("proxy_subdirectory", func(t *testing.T) { testHTTPCompatibleCRUDAndNoExternalJob(t, "/tools/draw") })
+}
+
+func testHTTPCompatibleCRUDAndNoExternalJob(t *testing.T, prefix string) {
+	t.Helper()
 	r := testRepo(t)
 	s := NewService(r, fakeProvider{})
 	assets := fstest.MapFS{"index.html": {Data: []byte("<html>lottery</html>")}, "app.js": {Data: []byte("app")}}
-	server := httptest.NewServer(httpapi.NewHTTPHandler(s, fs.FS(assets)))
+	handler := httpapi.NewHTTPHandler(s, fs.FS(assets))
+	server := httptest.NewServer(http.StripPrefix(prefix, handler))
 	defer server.Close()
 	request := func(method, path, raw string, code int) []byte {
 		t.Helper()
+		path = prefix + path
 		req, _ := http.NewRequest(method, server.URL+path, strings.NewReader(raw))
 		if raw != "" {
 			req.Header.Set("Content-Type", "application/json")
@@ -59,7 +67,8 @@ func TestHTTPCompatibleCRUDAndNoExternalJob(t *testing.T) {
 	request("GET", "/api/bets/1", "", 200)
 	request("GET", "/api/health", "", 200)
 	request("HEAD", "/", "", 200)
-	request("GET", "/lottery/app.js", "", 200)
+	request("GET", "/", "", 200)
+	request("GET", "/app.js", "", 200)
 	for _, method := range []string{"GET", "POST"} {
 		request(method, "/api/jobs/check", "{}", 404)
 	}
@@ -76,4 +85,15 @@ func TestHTTPCompatibleCRUDAndNoExternalJob(t *testing.T) {
 	request("PUT", "/api/bets", "", 405)
 	request("DELETE", "/api/bets/1", "", 204)
 	request("GET", "/api/bets/1", "", 404)
+}
+
+func TestHTTPMountPrefixBelongsToProxy(t *testing.T) {
+	handler := httpapi.NewHTTPHandler(nil, fstest.MapFS{"index.html": {Data: []byte("<html>lottery</html>")}, "app.js": {Data: []byte("app")}})
+	for _, path := range []string{"/lottery", "/lottery/", "/lottery/app.js", "/lottery/api/health"} {
+		recorder := httptest.NewRecorder()
+		handler.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, path, nil))
+		if recorder.Code != http.StatusNotFound {
+			t.Errorf("GET %s: got %d, want 404", path, recorder.Code)
+		}
+	}
 }

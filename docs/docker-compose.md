@@ -81,6 +81,23 @@ location / {
 
 宿主机运行的 Nginx 改用 `http://127.0.0.1:3100`。为外部访问配置自己的 HTTPS 域名和证书。若只需反向代理访问，可将端口映射改为 `127.0.0.1:3100:3000`，或在容器 Nginx 部署中移除 `ports`，继续使用 `wk` 网络访问。
 
+如果域名由多个应用共用，可以把服务挂在任意子目录。以下以 `/lottery/` 为例，页面、静态资源和 API 在浏览器中都使用该前缀，例如 `/lottery/api/bets` 和 `/lottery/api/health`。
+
+```nginx
+location = /lottery {
+    return 308 /lottery/$is_args$args;
+}
+
+location /lottery/ {
+    proxy_pass http://z-lottery:3000/;
+    proxy_set_header Host $host;
+    proxy_read_timeout 600s;
+    client_max_body_size 512k;
+}
+```
+
+子目录配置中，`proxy_pass` 末尾的 `/` 让 Nginx 把匹配到的前缀替换为 `/`。例如，浏览器请求 `/lottery/api/bets` 时，Go 服务收到 `/api/bets`。改用其他子目录时，同步替换两个 `location` 和重定向目标中的 `/lottery`。重定向补上末尾的斜杠并保留查询参数，使浏览器正确解析相对路径。
+
 ## 从旧版服务升级与备份
 
 Go 服务兼容已有 SQLite 投注表和 API 数据格式，自动创建官方同步状态等所需表，无需手动数据转换。已有命名卷继续使用，镜像保持 UID/GID 1000 与 `/app/data` 路径；新数据目录权限为 0700。升级前先停用外部 cron 和调度平台任务，停止旧服务并备份完整数据卷，然后更新镜像重建容器；检查健康状态、投注列表和服务日志。保留升级前镜像及备份以便恢复，本次代码更新不会自行部署或发布镜像。

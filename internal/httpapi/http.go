@@ -188,11 +188,7 @@ func NewHTTPHandler(service BetService, assets fs.FS) http.Handler {
 			methodError("GET, HEAD")
 			return
 		}
-		name := route
-		if route == "/lottery" || strings.HasPrefix(route, "/lottery/") {
-			name = strings.TrimPrefix(route, "/lottery")
-		}
-		name = strings.TrimPrefix(name, "/")
+		name := strings.TrimPrefix(route, "/")
 		if name == "" {
 			name = "index.html"
 		}

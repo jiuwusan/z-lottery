@@ -23,10 +23,10 @@
 .saved-actions{display:flex;flex-wrap:wrap;justify-content:flex-end;align-items:center;gap:4px}
 .saved-actions .outline-button{padding:4px 8px;min-height:26px}
 .saved-amount strong{font-size:15px}
-.issue-hits{margin-top:8px}
+.saved-number-groups,.issue-hit-rows{display:grid;grid-template-columns:minmax(0,1fr);grid-auto-rows:max-content;gap:6px}
 .saved-number-groups{max-height:260px;overflow:auto}
-.record-number-group{margin-top:10px;padding:10px;border-radius:6px;background:var(--paper)}
-.record-number-group>strong{display:block;margin-bottom:6px}
+.issue-heading{display:flex;flex-wrap:wrap;align-items:baseline;gap:4px 8px}
+.issue-outcome{font-size:11px;color:var(--muted)}
 .record-number-balls{flex-wrap:nowrap;align-items:center;gap:4px;overflow-x:auto}
 .record-number-balls>*{flex:none}
 .record-number-balls .ball{width:28px;height:28px;font-size:12px}

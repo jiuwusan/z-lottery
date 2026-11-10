@@ -90,84 +90,66 @@
   });
 
   function appendNumberBalls(container, gameKey, ticket, drawn) {
-    const game = Lottery.GAMES[gameKey];
     const isDLT = gameKey === 'dlt';
     const zones = [
-      { key: 'front', label: game.frontLabel, color: isDLT ? 'blue' : 'red' },
-      { key: 'back', label: game.backLabel, color: isDLT ? 'yellow' : 'blue' },
+      { key: 'front', color: isDLT ? 'blue' : 'red' },
+      { key: 'back', color: isDLT ? 'yellow' : 'blue' },
     ];
     const balls = element('div', undefined, 'balls record-number-balls');
-    const counts = [];
     for (const zone of zones) {
       if (zone.key === 'back') balls.append(element('span', '+'), ' ');
-      let hits = 0;
       for (const number of ticket[zone.key]) {
         const hit = drawn?.[zone.key].has(number);
-        if (hit) hits++;
         const ball = element('span', String(number).padStart(2, '0'), `ball zone-${zone.color}${hit ? ' is-hit' : ''}`);
         if (hit) ball.title = '命中';
         balls.append(ball, ' ');
       }
-      if (drawn) counts.push(`${zone.label}命中 ${hits} 个`);
     }
-    if (drawn) container.append(element('p', counts.join(' · ')));
     container.append(balls);
-  }
-
-  function hitDetails(bet, draw) {
-    const details = element('details', undefined, 'issue-hits');
-    details.append(element('summary', '查看各组命中号码'));
-    details.addEventListener('toggle', () => {
-      const drawn = { front: new Set(draw.front), back: new Set(draw.back) };
-      const groups = document.createDocumentFragment();
-      bet.tickets.forEach((ticket, index) => {
-        const group = element('div', undefined, 'record-number-group');
-        group.append(element('strong', `第 ${index + 1} 组`));
-        appendNumberBalls(group, bet.config.game, ticket, drawn);
-        groups.append(group);
-      });
-      details.append(groups);
-    }, { once: true });
-    return details;
   }
 
   function drawDetails(bet) {
     const details = element('details', undefined, 'bet-details');
     details.append(element('summary', '号码与逐期验奖详情'));
-    const tickets = element('div', undefined, 'saved-number-groups');
-    details.append(element('p', '投注号码', 'saved-meta'), tickets);
     details.addEventListener('toggle', () => {
-      const groups = document.createDocumentFragment();
-      bet.tickets.forEach((ticket, index) => {
-        const group = element('div', undefined, 'record-number-group');
-        group.append(element('strong', `第 ${index + 1} 组`));
-        appendNumberBalls(group, bet.config.game, ticket);
-        groups.append(group);
-      });
-      tickets.append(groups);
+      const tickets = element('div', undefined, 'saved-number-groups');
+      for (const ticket of bet.tickets) appendNumberBalls(tickets, bet.config.game, ticket);
+      details.append(element('p', '投注号码', 'saved-meta'), tickets);
+      appendIssueResults(details, bet);
     }, { once: true });
+    return details;
+  }
+
+  function appendIssueResults(details, bet) {
     const byIssue = new Map(bet.results.map(result => [result.issue, result]));
     for (let index = 0; index < bet.config.periods; index++) {
       const issue = bet.issues[index];
       const result = byIssue.get(issue);
       const row = element('div', undefined, 'issue-result');
-      row.append(element('strong', issue ? `第 ${index + 1} 次 / ${issue} 期` : `第 ${index + 1} 次开奖 · 待匹配`));
+      const heading = element('div', undefined, 'issue-heading');
+      heading.append(element('strong', issue ? `第 ${index + 1} 次 / ${issue} 期` : `第 ${index + 1} 次开奖 · 待匹配`));
+      row.append(heading);
       if (!result) row.append(element('p', issue ? '待开奖 / 待验奖' : '根据投注时间等待下一次实际开奖'));
       else {
+        heading.append(element('span', result.won ? `已中奖 · ${result.amount === null ? '奖金待补全' : money.format(result.amount) + ' 元'}` : '未中奖', 'issue-outcome'));
         const draw = element('div', undefined, 'issue-draw-balls');
-        draw.append(element('p', `开奖号码 · ${result.draw.date}`));
+        const { date } = result.draw;
+        let liveTime = '21:15';
+        if (bet.config.game === 'dlt') liveTime = date < '2023-01-01' ? '20:25' : '21:25';
+        draw.append(element('p', `开奖号码 · ${date} ${liveTime}（常规直播）`));
         appendNumberBalls(draw, bet.config.game, result.draw);
         row.append(draw);
-        row.append(element('p', result.won ? `已中奖 · ${result.amount === null ? '奖金待补全' : money.format(result.amount) + ' 元'}` : '未中奖'));
         result.tickets.forEach((ticket, index) => {
           if (!ticket.winners.length) return;
           row.append(element('p', `第 ${index + 1} 组：` + ticket.winners.map(winner => `${winner.level}等奖 ${winner.count} 注${winner.amount === null ? '（奖金待补全）' : ' / ' + money.format(winner.amount) + ' 元'}`).join('；')));
         });
-        row.append(hitDetails(bet, result.draw));
+        const drawn = { front: new Set(result.draw.front), back: new Set(result.draw.back) };
+        const hits = element('div', undefined, 'issue-hit-rows');
+        for (const ticket of bet.tickets) appendNumberBalls(hits, bet.config.game, ticket, drawn);
+        row.append(element('p', '命中情况'), hits);
       }
       details.append(row);
     }
-    return details;
   }
 
   function render(bets) {

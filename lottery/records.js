@@ -92,6 +92,38 @@
     if (generated) saveMessage('设置已修改，请重新生成号码后保存。');
   });
 
+  function hitDetails(bet, draw) {
+    const details = element('details', undefined, 'issue-hits');
+    details.append(element('summary', '查看各组命中号码'));
+    details.addEventListener('toggle', () => {
+      const game = Lottery.GAMES[bet.config.game];
+      const zones = [
+        { key: 'front', label: game.frontLabel, drawn: new Set(draw.front), ballClass: 'ball' },
+        { key: 'back', label: game.backLabel, drawn: new Set(draw.back), ballClass: 'ball blue' },
+      ];
+      const groups = document.createDocumentFragment();
+      bet.tickets.forEach((ticket, index) => {
+        const group = element('div', undefined, 'issue-hit-group');
+        group.append(element('strong', `第 ${index + 1} 组`));
+        for (const zone of zones) {
+          const balls = element('div', undefined, 'balls');
+          let hits = 0;
+          for (const number of ticket[zone.key]) {
+            const hit = zone.drawn.has(number);
+            if (hit) hits++;
+            const ball = element('span', String(number).padStart(2, '0'), zone.ballClass + (hit ? ' is-hit' : ''));
+            if (hit) ball.title = '命中';
+            balls.append(ball);
+          }
+          group.append(element('p', `${zone.label}命中 ${hits} 个`), balls);
+        }
+        groups.append(group);
+      });
+      details.append(groups);
+    }, { once: true });
+    return details;
+  }
+
   function drawDetails(bet) {
     const details = element('details', undefined, 'bet-details');
     details.append(element('summary', '号码与逐期验奖详情'));
@@ -110,6 +142,7 @@
           if (!ticket.winners.length) return;
           row.append(element('p', `第 ${index + 1} 组：` + ticket.winners.map(winner => `${winner.level}等奖 ${winner.count} 注${winner.amount === null ? '（奖金待补全）' : ' / ' + money.format(winner.amount) + ' 元'}`).join('；')));
         });
+        row.append(hitDetails(bet, result.draw));
       }
       details.append(row);
     }

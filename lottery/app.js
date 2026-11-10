@@ -1,3 +1,29 @@
+async function copyLotteryResult(config, tickets) {
+  const game = Lottery.GAMES[config.game];
+  const numbers = values => values.map(n => String(n).padStart(2, '0')).join(' ');
+  const text = [
+    `${game.name} ${config.front}+${config.back} · ${config.multiple}倍${config.append ? '追加' : ''} · ${config.periods} 期`,
+    ...tickets.map((ticket, i) => `第 ${i + 1} 组\n${game.frontLabel}：${numbers(ticket.front)}\n${game.backLabel}：${numbers(ticket.back)}`),
+  ].join('\n\n');
+  if (window.isSecureContext && navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+  } else {
+    const textarea = document.createElement('textarea');
+    textarea.value = text;
+    textarea.style.cssText = 'position:fixed;left:-9999px;top:0';
+    const previousFocus = document.activeElement;
+    const container = previousFocus?.closest('dialog[open]') || document.body;
+    container.append(textarea);
+    try {
+      textarea.select();
+      if (!document.execCommand('copy')) throw new Error('copy failed');
+    } finally {
+      textarea.remove();
+      previousFocus?.focus();
+    }
+  }
+}
+
 (function () {
   'use strict';
   const form = document.querySelector('#settings-form');
@@ -176,27 +202,8 @@
   copyButton.addEventListener('click', async () => {
     if (!currentResult) return;
     const copiedRevision = revision;
-    const { config, game, tickets } = currentResult;
-    const numbers = values => values.map(n => String(n).padStart(2, '0')).join(' ');
-    const text = [
-      `${game.name} ${config.front}+${config.back} · ${config.multiple}倍${config.append ? '追加' : ''} · ${config.periods} 期`,
-      ...tickets.map((ticket, i) => `第 ${i + 1} 组\n${game.frontLabel}：${numbers(ticket.front)}\n${game.backLabel}：${numbers(ticket.back)}`),
-    ].join('\n\n');
     try {
-      if (window.isSecureContext && navigator.clipboard?.writeText) {
-        await navigator.clipboard.writeText(text);
-      } else {
-        const textarea = document.createElement('textarea');
-        textarea.value = text;
-        textarea.style.cssText = 'position:fixed;left:-9999px;top:0';
-        document.body.append(textarea);
-        const previousFocus = document.activeElement;
-        textarea.select();
-        let copied;
-        try { copied = document.execCommand('copy'); }
-        finally { textarea.remove(); previousFocus?.focus(); }
-        if (!copied) throw new Error('copy failed');
-      }
+      await copyLotteryResult(currentResult.config, currentResult.tickets);
       if (revision === copiedRevision) statusElement.textContent = '号码已复制到剪贴板。';
     } catch (_) {
       statusElement.textContent = '浏览器未允许复制，请选中页面上的号码手动复制。';

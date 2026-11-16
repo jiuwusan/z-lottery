@@ -7,15 +7,27 @@
   <meta name="description" content="大乐透与双色球随机选号，支持复式、共享号码、倍数和连续期数。">
   <title>z-lottery · 投注记录</title>
   <link rel="icon" type="image/svg+xml" href="./favicon.svg?v=2">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="apple-touch-icon" sizes="180x180" href="./icon-180.png">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="z-lottery">
   <link rel="stylesheet" href="./styles.css">
+  <script defer src="./install.js"></script>
   <script defer src="./lottery-core.js"></script>
   <script defer src="./app.js"></script>
   <script defer src="./records.js"></script>
 </head>
 <body>
   <div class="shell">
-    <header class="topbar"><a class="brand" href="./"><span class="brand-icon" aria-hidden="true">z.</span> z-lottery</a><span class="top-note"><i></i> 每一次，都是新的可能</span></header>
+    <header class="topbar"><a class="brand" href="./"><span class="brand-icon" aria-hidden="true">z.</span> z-lottery</a><div class="topbar-actions"><span class="top-note"><i></i> 每一次，都是新的可能</span><button id="install-button" class="outline-button install-button" type="button" aria-haspopup="dialog" hidden>添加到桌面</button></div></header>
     <main>
+      <dialog id="install-dialog" class="install-dialog" aria-labelledby="install-title" aria-describedby="install-description">
+        <div class="dialog-heading"><div><span class="eyebrow">Z-LOTTERY</span><h2 id="install-title">添加到桌面</h2></div><button id="close-install" class="outline-button" type="button" autofocus>关闭</button></div>
+        <p id="install-description"></p>
+        <ol id="install-steps"></ol>
+        <p class="records-help">添加后可快速打开网站，投注记录和验奖仍需连接服务。</p>
+      </dialog>
       <dialog id="new-bet-dialog" class="new-bet-dialog" aria-labelledby="new-bet-title" aria-describedby="new-bet-description">
         <div class="dialog-heading"><div><h2 id="new-bet-title">新增投注</h2><p id="new-bet-description">设定投注方式，生成号码后保存。关闭弹窗会保留本次未保存内容。</p></div><button id="close-new-bet" class="outline-button" type="button" aria-label="关闭新增投注弹窗" autofocus>关闭</button></div>
         <div class="workspace">

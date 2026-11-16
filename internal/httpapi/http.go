@@ -193,7 +193,8 @@ func NewHTTPHandler(service BetService, assets fs.FS) http.Handler {
 			name = "index.html"
 		}
 		switch name {
-		case "index.html", "favicon.svg", "styles.css", "lottery-core.js", "app.js", "records.js":
+		case "index.html", "favicon.svg", "styles.css", "lottery-core.js", "app.js", "records.js",
+			"install.js", "manifest.webmanifest", "icon-180.png", "icon-192.png", "icon-512.png":
 		default:
 			fail(domain.NewError(404, "文件不存在"))
 			return
@@ -204,6 +205,9 @@ func NewHTTPHandler(service BetService, assets fs.FS) http.Handler {
 			return
 		}
 		typ := mime.TypeByExtension(path.Ext(name))
+		if name == "manifest.webmanifest" {
+			typ = "application/manifest+json; charset=utf-8"
+		}
 		if typ == "" {
 			typ = "application/octet-stream"
 		}

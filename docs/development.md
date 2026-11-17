@@ -43,6 +43,10 @@ HOST、PORT、DATABASE_PATH、CHECK_ENABLED、CHECK_SCHEDULE、CHECK_TIMEZONE，
 
 浏览器与后端按 API 分界，不导入 Go 内部模块。保留桌面/移动布局、键盘与 label、对话框焦点、加载/禁用状态和错误展示；用户和上游文字使用 textContent/DOM，禁止未清洗 HTML 拼接。切换页面或实例后晚到响应不能覆盖当前状态。
 
+修改布局时运行 `node --test test/browser-spacing.cjs`。使用Node开发环境、单独目录中的Playwright和Chrome/Chromium；`PLAYWRIGHT_NODE_MODULES` 指向开发依赖安装根目录（包含node_modules），默认临时目录下的z-lottery-browser-check；`CHROME_PATH`可指定浏览器（Windows默认本机Chrome，其他系统默认Playwright安装的Chromium）。测试绑定本机随机端口，只返回白名单静态资源及合成API，并阻断其他来源；不运行真实Go服务、调度器、数据库或上游。`LOTTERY_BROWSER_ARTIFACTS`可选指定截图目录。此开发检查不增加应用运行依赖或进入Docker镜像。
+
+间距回归直接测量DOM：可选追加/错误状态不丢分隔，320～1716px及380/381、700/701断点两侧数值可读、连续期数整行、触控44px和记录操作换行、生成保存失败及列表/安装状态无横向溢出。不能仅以源码包含某个CSS声明代替浏览器断言，也不能将手机触控模拟描述为真机Safari验收。
+
 行为修复先写失败回归测试再改实现；纯重构保留全部现有断言，按新边界迁移测试与 fixture。测试 domain 边界、service 用例/取消/失败、repository 临时文件/事务/重启、gateway 真实协议边界和 HTTP 鉴权/状态码/响应头；使用 t.TempDir/t.Cleanup，不发送真实通知或执行危险外部命令。
 
 Go 测试包含 goja 执行浏览器彩票核心、CLI、HTTP CRUD、官方来源假响应、SQLite 迁移/事务/重启、调度与并发。开奖网关测试使用虚构传输，不请求真实开奖站。现有 CI 保留 race、Compose 和容器持久卷冒烟。

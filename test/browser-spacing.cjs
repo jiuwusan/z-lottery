@@ -49,7 +49,7 @@ after(async () => {
   if (server) await new Promise(resolve => { server.close(resolve); server.closeAllConnections(); });
 });
 
-async function withPage(width, touch, work) {
+async function withPage(width, touch, work, items = [fixture]) {
   const context = await browser.newContext({ viewport: { width, height: 900 }, isMobile: touch, hasTouch: touch, reducedMotion: 'reduce' });
   const page = await context.newPage();
   const errors = [];
@@ -61,14 +61,14 @@ async function withPage(width, touch, work) {
     if (url.origin !== origin) return route.abort();
     if (url.pathname.startsWith('/api/')) {
       const failed = route.request().method() !== 'GET' || listMode === 'error';
-      return route.fulfill({ status: failed ? 500 : 200, contentType: 'application/json', body: JSON.stringify(failed ? { error: '合成错误：请稍后重试。' } : { items: listMode === 'empty' ? [] : [fixture], total: listMode === 'empty' ? 0 : 1, pageSize: 10 }) });
+      return route.fulfill({ status: failed ? 500 : 200, contentType: 'application/json', body: JSON.stringify(failed ? { error: '合成错误：请稍后重试。' } : { items: listMode === 'empty' ? [] : items, total: listMode === 'empty' ? 0 : items.length, pageSize: 10 }) });
     }
     return route.continue();
   });
   await page.addInitScript(() => window.addEventListener('beforeinstallprompt', event => { event.preventDefault(); event.stopImmediatePropagation(); }, true));
   try {
     await page.goto(origin);
-    await page.locator('.saved-bet').waitFor();
+    await page.locator('.saved-bet').first().waitFor();
     await work(page, mode => { listMode = mode; });
     assert.deepEqual(errors, [], `${width}px runtime errors`);
   } finally { await context.close(); }
@@ -182,4 +182,53 @@ test('generated results, save failures, list states and install guide stay withi
     await page.locator('#close-install').click();
     await page.waitForFunction(() => document.activeElement.id === 'install-button');
   });
+});
+
+test('record details show original numbers only until any issue has a draw result', async () => {
+  function makeBet(id, game, issues, drawn, prizePending = false) {
+    const front = game === 'dlt' ? [1, 2, 3, 4, 5] : [1, 2, 3, 4, 5, 6];
+    const back = game === 'dlt' ? [1, 2] : [1];
+    return {
+      ...fixture, id,
+      config: { ...fixture.config, game, front: front.length, back: back.length },
+      tickets: [{ front, back }], issues,
+      checkedPeriods: drawn.length,
+      status: prizePending ? 'prize_pending' : drawn.length === 3 ? 'lost' : drawn.length ? 'partial' : 'pending',
+      results: drawn.map(issue => ({
+        issue, won: prizePending, amount: prizePending ? null : 0,
+        draw: { date: '2026-11-15', front, back },
+        tickets: [{ winners: prizePending ? [{ level: 1, count: 1, amount: null }] : [] }],
+      })),
+    };
+  }
+  for (const game of ['dlt', 'ssq']) for (const width of [390, 1440]) {
+    const issues = ['2026130', '2026131', '2026132'];
+    const items = [
+      makeBet(1, game, [], []),
+      makeBet(2, game, issues, []),
+      makeBet(3, game, [issues[0]], [issues[0]]),
+      makeBet(4, game, issues.slice(0, 2), [issues[1]]),
+      makeBet(5, game, [issues[0]], [issues[0]], true),
+      makeBet(6, game, issues, issues),
+    ];
+    await withPage(width, width < 701, async page => {
+      async function verify(index) {
+        const bet = items[index], details = page.locator('.bet-details').nth(index);
+        await details.locator('summary').click();
+        await details.locator('.issue-result').first().waitFor();
+        const originals = bet.results.length ? 0 : 1;
+        assert.equal(await details.getByText('投注号码', { exact: true }).count(), originals, `${game}/${width}px bet #${bet.id} original heading`);
+        assert.equal(await details.locator('.saved-number-groups').count(), originals, `bet #${bet.id} original numbers`);
+        assert.equal(await details.locator('.issue-result').count(), 3, `bet #${bet.id} keeps future periods`);
+        assert.equal(await details.locator('.issue-draw-balls').count(), bet.results.length, `bet #${bet.id} keeps drawn numbers`);
+        assert.equal(await details.locator('.issue-hit-rows').count(), bet.results.length, `bet #${bet.id} keeps hit numbers`);
+        if (bet.status === 'prize_pending') assert.ok((await details.innerText()).includes('奖金待补全'));
+      }
+      for (let index = 0; index < items.length; index++) await verify(index);
+      items[0] = makeBet(1, game, [issues[0]], [issues[0]]);
+      await page.locator('#connect-button').click();
+      await page.waitForFunction(() => !document.getElementById('connect-button').disabled);
+      await verify(0);
+    }, items);
+  }
 });

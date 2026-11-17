@@ -112,9 +112,11 @@
     const details = element('details', undefined, 'bet-details');
     details.append(element('summary', '号码与逐期验奖详情'));
     details.addEventListener('toggle', () => {
-      const tickets = element('div', undefined, 'saved-number-groups');
-      for (const ticket of bet.tickets) appendNumberBalls(tickets, bet.config.game, ticket);
-      details.append(element('p', '投注号码', 'saved-meta'), tickets);
+      if (!bet.results.length) {
+        const tickets = element('div', undefined, 'saved-number-groups');
+        for (const ticket of bet.tickets) appendNumberBalls(tickets, bet.config.game, ticket);
+        details.append(element('p', '投注号码', 'saved-meta'), tickets);
+      }
       appendIssueResults(details, bet);
     }, { once: true });
     return details;
